@@ -1,22 +1,22 @@
 """ Example training script.
 """
-
-
-
-import argparse
-from shutil import copytree
-import pickle
-from os.path import join
-from os import makedirs
 import sys
-from os import environ
+import pickle
+import argparse
+
+from glob import glob
 from time import time
+from os.path import join
+from torch import manual_seed
+from shutil import copytree, rmtree
+from os import makedirs, chdir, environ, system
+
+from drlfoam.agent import PPOAgent
+from drlfoam.environment import RotatingCylinder2D
+from drlfoam.execution import LocalBuffer, SlurmBuffer, SlurmConfig
+
 BASE_PATH = environ.get("DRL_BASE", "")
 sys.path.insert(0, BASE_PATH)
-
-from drlfoam.environment import RotatingCylinder2D
-from drlfoam.agent import PPOAgent
-from drlfoam.execution import LocalBuffer, SlurmBuffer, SlurmConfig
 
 
 def print_statistics(actions, rewards):
@@ -46,6 +46,8 @@ def parseArguments():
                     help="End time of the simulations.")
     ag.add_argument("-t", "--timeout", required=False, default=1e15, type=int,
                     help="Maximum allowed runtime of a single simulation in seconds.")
+    ag.add_argument("-s", "--seed", required=False, default=0, type=int,
+                    help="seed value for torch")
     args = ag.parse_args()
     return args
 
@@ -60,6 +62,9 @@ def main(args):
     executer = args.environment
     timeout = args.timeout
 
+    # ensure reproducibility
+    manual_seed(args.seed)
+
     # create a directory for training
     makedirs(training_path, exist_ok=True)
 
@@ -68,6 +73,10 @@ def main(args):
              join(training_path, "base"), dirs_exist_ok=True)
     env = RotatingCylinder2D()
     env.path = join(training_path, "base")
+
+    # if debug active -> add execution of bashrc to Allrun scripts, because otherwise the path to openFOAM is not set
+    if hasattr(args, "debug"):
+        args.set_openfoam_bashrc(path=env.path)
 
     # create buffer
     if executer == "local":
@@ -115,5 +124,72 @@ def main(args):
         pickle.dump(agent.history, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
+class RunTrainingInDebugger:
+    """
+    class for providing arguments when running script in IDE (e.g. for debugging). The ~/.bashrc is not executed when
+    not running the training from terminal, therefore the environment variables need to be set manually in the Allrun
+    scripts
+    """
+
+    def __init__(self, episodes: int = 2, runners: int = 2, buffer: int = 2, finish: float = 5.0,
+                 n_input_time_steps: int = 30, seed: int = 0, timeout: int = 1e15,
+                 out_dir: str = "examples/TEST_for_debugging"):
+        self.command = ". /usr/lib/openfoam/openfoam2206/etc/bashrc"
+        self.output = out_dir
+        self.iter = episodes
+        self.runners = runners
+        self.buffer = buffer
+        self.finish = finish
+        self.environment = "local"
+        self.debug = True
+        self.n_input_time_steps = n_input_time_steps
+        self.seed = seed
+        self.timeout = timeout
+
+    def set_openfoam_bashrc(self, path: str):
+        system(f"sed -i '5i # source bashrc for openFOAM for debugging purposes\\n{self.command}' {path}/Allrun.pre")
+        system(f"sed -i '4i # source bashrc for openFOAM for debugging purposes\\n{self.command}' {path}/Allrun")
+
+
 if __name__ == "__main__":
-    main(parseArguments())
+    # option for running the training in IDE, e.g. in debugger
+    DEBUG = True
+
+    if not DEBUG:
+        main(parseArguments())
+        exit(0)
+
+    else:
+        # for debugging purposes, set environment variables for the current directory
+        environ["DRL_BASE"] = "/media/janis/Daten/Studienarbeit/drlfoam/"
+        environ["DRL_TORCH"] = "".join([environ["DRL_BASE"], "libtorch/"])
+        environ["DRL_LIBBIN"] = "".join([environ["DRL_BASE"], "/openfoam/libs/"])
+        sys.path.insert(0, environ["DRL_BASE"])
+        sys.path.insert(0, environ["DRL_TORCH"])
+        sys.path.insert(0, environ["DRL_LIBBIN"])
+
+        # set paths to openfoam
+        BASE_PATH = environ.get("DRL_BASE", "")
+        sys.path.insert(0, BASE_PATH)
+        environ["WM_PROJECT_DIR"] = "/usr/lib/openfoam/openfoam2206"
+        sys.path.insert(0, environ["WM_PROJECT_DIR"])
+        chdir(BASE_PATH)
+
+        # test MB-DRL
+        d_args = RunTrainingInDebugger(episodes=2, runners=2, buffer=2, finish=5, n_input_time_steps=30,
+                                       out_dir="examples/TEST")
+        assert d_args.finish > 4, "finish time needs to be > 4s, (the first 4sec are uncontrolled)"
+
+        # run PPO training
+        main(d_args)
+
+        # clean up afterwards
+        for dirs in [d for d in glob(d_args.output + "/copy_*")]:
+            rmtree(dirs)
+        rmtree(d_args.output + "/base")
+
+        try:
+            rmtree(d_args.output + "/cd_model")
+            rmtree(d_args.output + "/cl_p_model")
+        except FileNotFoundError:
+            print("no directories for environment models found.")
