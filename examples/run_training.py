@@ -108,7 +108,7 @@ def main(args):
                      env.action_bounds, env.action_bounds)
 
     # epochs = length(trajectory), assume constant sample rate of 100 Hz (default value)
-    n_epochs, obs_cfd, n_models = int(100 * (end_time - buffer.base_env.start_time)), [], 10
+    n_epochs, obs_cfd, n_models = int(100 * (end_time - buffer.base_env.start_time)), [], 1
 
     # begin training
     start_time = time()
@@ -130,7 +130,8 @@ def main(args):
             # in 1st episode: CFD data is used to train environment models for 1st time
             if e == 0:
                 cl_p_models, cd_models = [], []
-                obs_resorted = split_data(obs_cfd, len_traj=n_epochs, n_probes=env.n_states)
+                obs_resorted = split_data(obs_cfd, len_traj=n_epochs, n_probes=env.n_states, buffer_size=buffer_size,
+                                          n_e_cfd=len(obs_cfd))
 
                 # train 1st models in ensemble with 5000 epochs
                 env_model_cl_p, env_model_cd, losses = train_env_models(training_path, n_input_time_steps, env.n_states,
@@ -151,7 +152,8 @@ def main(args):
             # ever 5th episode: models are loaded and re-trained based on CFD data of the current & last CFD episode
             else:
                 cl_p_models, cd_models = [], []
-                obs_resorted = split_data(obs_cfd[-2:], len_traj=n_epochs, n_probes=env.n_states)
+                obs_resorted = split_data(obs_cfd, len_traj=n_epochs, n_probes=env.n_states, n_e_cfd=len(obs_cfd),
+                                          buffer_size=buffer_size)
                 env_model_cl_p, env_model_cd, losses = train_env_models(training_path, n_input_time_steps, env.n_states,
                                                                         observations=obs_resorted, epochs=500,
                                                                         epochs_cd=500, load=True, model_no=0)
@@ -188,13 +190,35 @@ def main(args):
                                                      n_input=n_input_time_steps, len_traj=n_epochs,
                                                      buffer_size=buffer_size)
 
-            # save the generated trajectories, for now without model buffer instance
-            save_trajectories(training_path, e, predicted_traj)
+            # if len(predicted_traj) < buffer size -> discard trajectories from models and go back to CFD
+            if len(predicted_traj) < buffer_size:
+                buffer._n_fills = e
+                buffer.fill()
+                states, actions, rewards = buffer.observations
+                obs_cfd.append("".join([training_path + f"/observations_{e}.pkl"]))
 
-            # get the states, actions and rewards required for PPO-training
-            states = [predicted_traj[traj]["states"] for traj in range(buffer_size)]
-            actions = [predicted_traj[traj]["actions"] for traj in range(buffer_size)]
-            rewards = [predicted_traj[traj]["rewards"] for traj in range(buffer_size)]
+            else:
+                # save the generated trajectories, for now without model buffer instance
+                save_trajectories(training_path, e, predicted_traj)
+
+                # get the states, actions and rewards required for PPO-training
+                states = [predicted_traj[traj]["states"] for traj in range(buffer_size)]
+                actions = [predicted_traj[traj]["actions"] for traj in range(buffer_size)]
+                rewards = [predicted_traj[traj]["rewards"] for traj in range(buffer_size)]
+
+        # in case no trajectories in CFD converged, use trajectories of the last CFD episodes to train policy network
+        if not actions and e >= 5:
+            try:
+                n_traj = obs_resorted["actions"].size()[1]
+                actions = [obs_resorted["actions"][:, pt.randint(0, n_traj, size=(buffer_size,))]]
+                rewards = [obs_resorted["rewards"][:, pt.randint(0, n_traj, size=(buffer_size,))]]
+                states = [obs_resorted["states"][:, :, pt.randint(0, n_traj, size=(buffer_size,))]]
+
+            # if we don't have any trajectories generated within the last 3 CFD episodes, it doesn't make sense to
+            # continue with the training
+            except IndexError:
+                print("could not find any valid trajectories from the last 3 CFD episodes!\nAborting training.")
+                exit(0)
 
         # continue with original PPO-training routine
         print_statistics(actions, rewards)
@@ -264,7 +288,7 @@ if __name__ == "__main__":
         chdir(BASE_PATH)
 
         # test MB-DRL
-        d_args = RunTrainingInDebugger(episodes=10, runners=4, buffer=4, finish=5, n_input_time_steps=30,
+        d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, finish=5, n_input_time_steps=30,
                                        out_dir="examples/TEST")
         assert d_args.finish > 4, "finish time needs to be > 4s, (the first 4sec are uncontrolled)"
 
