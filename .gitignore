@@ -140,4 +140,10 @@ dmypy.json
 .pyre/
 
 # pycharm
-.idea
+.idea/
+/examples/clean_dir.sh
+/examples/clean_dir_MB_MF.sh
+/examples/run_job.sh
+/examples/submit_jobs.sh
+/examples/submit_jobs_MB_MF.sh
+/examples/run_training_MF.py
