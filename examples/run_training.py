@@ -17,7 +17,7 @@ sys.path.insert(0, BASE_PATH)
 from drlfoam.agent import PPOAgent
 from drlfoam.environment import RotatingCylinder2D
 from drlfoam.execution import LocalBuffer, SlurmBuffer, SlurmConfig
-from drlfoam.environment.env_model_rotating_cylinder import *
+from drlfoam.environment.env_model_rotating_cylinder_new_training_routine import *
 
 
 def print_statistics(actions, rewards):
@@ -110,7 +110,7 @@ def main(args):
                      env.action_bounds, env.action_bounds)
 
     # epochs = length(trajectory), assume constant sample rate of 100 Hz (default value)
-    len_traj, obs_cfd, n_models = int(100 * (end_time - buffer.base_env.start_time)), [], 3
+    len_traj, obs_cfd, n_models = int(100 * (end_time - buffer.base_env.start_time)), [], 5
 
     # begin training
     start_time = time()
@@ -148,12 +148,10 @@ def main(args):
                                                                                   load=True,
                                                                                   n_time_steps=n_input_time_steps)
 
-            # save train- and validation losses of the environment models, omit losses of the 1st episode
-            # TO_DO: extend for ME
-            if e > 0:
-                losses = {"train_loss_cl_p": pt.tensor(l[0][0]), "train_loss_cd": pt.tensor(l[0][1]),
-                          "val_loss_cl_p": pt.tensor(l[1][0]), "val_loss_cd": pt.tensor(l[1][1])}
-                save_trajectories(training_path, e, losses, name="/env_model_loss_")
+            # save train- and validation losses of the environment models
+            losses = {"train_loss_cl_p": l[:, 0, 0, :], "train_loss_cd": l[:, 0, 1, :], "val_loss_cl_p": l[:, 1, 0, :],
+                      "val_loss_cd": l[:, 1, 1, :]}
+            save_trajectories(training_path, e, losses, name="/env_model_loss_")
 
             # all observations are saved in obs_resorted, so reset buffer
             buffer.reset()
@@ -273,9 +271,11 @@ if __name__ == "__main__":
         sys.path.insert(0, environ["WM_PROJECT_DIR"])
         chdir(BASE_PATH)
 
-        # test MB-DRL
-        d_args = RunTrainingInDebugger(episodes=20, runners=2, buffer=2, finish=5, n_input_time_steps=30, seed=0,
-                                       out_dir="examples/TEST", crashed_in_e=55)
+        # test MB-DRL on local machine
+        d_args = RunTrainingInDebugger(episodes=20, runners=4, buffer=4, finish=5, n_input_time_steps=30, seed=0,
+                                       # out_dir="examples/e80_r8_b8_f6_MB_1model_local_random_batch_size/seed3/",
+                                       out_dir="examples/TEST/",
+                                       crashed_in_e=90)
         assert d_args.finish > 4, "finish time needs to be > 4s, (the first 4sec are uncontrolled)"
 
         # run PPO training
