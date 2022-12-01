@@ -109,7 +109,7 @@ def main(args):
     agent = PPOAgent(env.n_states, env.n_actions, -
                      env.action_bounds, env.action_bounds)
 
-    # epochs = length(trajectory), assume constant sample rate of 100 Hz (default value)
+    # len_traj = length of the trajectory, assuming constant sample rate of 100 Hz (default value)
     len_traj, obs_cfd, n_models = int(100 * (end_time - buffer.base_env.start_time)), [], 5
 
     # begin training
@@ -148,10 +148,14 @@ def main(args):
                                                                                   load=True,
                                                                                   n_time_steps=n_input_time_steps)
 
-            # save train- and validation losses of the environment models
-            losses = {"train_loss_cl_p": l[:, 0, 0, :], "train_loss_cd": l[:, 0, 1, :], "val_loss_cl_p": l[:, 1, 0, :],
-                      "val_loss_cd": l[:, 1, 1, :]}
-            save_trajectories(training_path, e, losses, name="/env_model_loss_")
+            # save train- and validation losses of the environment models in N_models > 1 (1st model runs different
+            # amounts of epochs, ...)
+            if n_models == 1:
+                pass
+            else:
+                losses = {"train_loss_cl_p": l[:, 0, 0, :], "train_loss_cd": l[:, 0, 1, :],
+                          "val_loss_cl_p": l[:, 1, 0, :], "val_loss_cd": l[:, 1, 1, :]}
+                save_trajectories(training_path, e, losses, name="/env_model_loss_")
 
             # all observations are saved in obs_resorted, so reset buffer
             buffer.reset()
@@ -272,8 +276,7 @@ if __name__ == "__main__":
         chdir(BASE_PATH)
 
         # test MB-DRL on local machine
-        d_args = RunTrainingInDebugger(episodes=20, runners=4, buffer=4, finish=5, n_input_time_steps=30, seed=0,
-                                       # out_dir="examples/e80_r8_b8_f6_MB_1model_local_random_batch_size/seed3/",
+        d_args = RunTrainingInDebugger(episodes=80, runners=4, buffer=4, finish=5, n_input_time_steps=30, seed=2,
                                        out_dir="examples/TEST/",
                                        crashed_in_e=90)
         assert d_args.finish > 4, "finish time needs to be > 4s, (the first 4sec are uncontrolled)"
