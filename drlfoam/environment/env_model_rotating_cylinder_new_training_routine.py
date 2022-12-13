@@ -324,7 +324,7 @@ def check_trajectories(cl: pt.Tensor, cd: pt.Tensor, actions: pt.Tensor, alpha: 
         status = (False, "cd")
     elif (pt.max(actions.abs()).item() > 5.0) or (pt.isnan(actions).any().item()):
         status = (False, "actions")
-    elif (pt.max(alpha.abs()).item() > 1e3) or (pt.isnan(alpha).any().item()):
+    elif (pt.max(alpha.abs()).item() > 5e3) or (pt.isnan(alpha).any().item()):
         status = (False, "alpha")
     elif (pt.max(beta.abs()).item() > 5e3) or (pt.isnan(beta).any().item()):
         status = (False, "beta")

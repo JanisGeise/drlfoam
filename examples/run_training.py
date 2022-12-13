@@ -186,7 +186,7 @@ def main(args):
                 # save the generated trajectories, for now without model buffer instance
                 save_trajectories(training_path, e, predicted_traj)
 
-                # get the states, actions and rewards required for PPO-training
+                # states, actions and rewards required for PPO-training, they are already re-scaled when generated
                 states = [predicted_traj[traj]["states"] for traj in range(buffer_size)]
                 actions = [predicted_traj[traj]["actions"] for traj in range(buffer_size)]
                 rewards = [predicted_traj[traj]["rewards"] for traj in range(buffer_size)]
@@ -196,9 +196,13 @@ def main(args):
             try:
                 n_traj = obs["actions"].size()[1]
                 traj_n = pt.randint(0, n_traj, size=(buffer_size,))
+
+                # actions and states stored in obs are scaled to interval [0 ,1], so they need to be re-scaled
                 actions = [denormalize_data(obs["actions"][:, t.item()], obs["min_max_actions"]) for t in traj_n]
-                rewards = [obs["rewards"][:, t.item()] for t in traj_n]
                 states = [denormalize_data(obs["states"][:, :, t], obs["min_max_states"]) for t in traj_n]
+
+                # rewards are not scaled to [0, 1] when loading the data since they are not used for env. models
+                rewards = [obs["rewards"][:, t.item()] for t in traj_n]
 
             # if we don't have any trajectories generated within the last 3 CFD episodes, it doesn't make sense to
             # continue with the training
