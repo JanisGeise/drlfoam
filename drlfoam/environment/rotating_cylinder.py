@@ -39,10 +39,10 @@ def _parse_trajectory(path: str) -> DataFrame:
 
 
 class RotatingCylinder2D(Environment):
-    def __init__(self, r1: float = 3.0, r2: float = 0.1):
+    def __init__(self, r1: float = 3.0, r2: float = 0.1, n_probes: int = 12):
         super(RotatingCylinder2D, self).__init__(
             join(TESTCASE_PATH, "rotatingCylinder2D"), "Allrun.pre",
-            "Allrun", "Allclean", 2, 12, 1
+            "Allrun", "Allclean", 2, n_probes, 1
         )
         self._r1 = r1
         self._r2 = r2

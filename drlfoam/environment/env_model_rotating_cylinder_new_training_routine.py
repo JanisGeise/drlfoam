@@ -104,14 +104,16 @@ class EnvModel(pt.nn.Module):
 def create_simple_network(n_input: int, n_output: int, n_neurons: int, n_layers: int,
                           activation: callable) -> pt.nn.Sequential:
     """
+    creates a neural network
+
     Note: this function was provided by my supervisor Andre Weiner (https://github.com/AndreWeiner)
 
-    :param n_input:
-    :param n_output:
-    :param n_neurons:
-    :param n_layers:
-    :param activation:
-    :return:
+    :param n_input: number of inputs
+    :param n_output: number of outputs
+    :param n_neurons: number of neurons per layer
+    :param n_layers: number of hidden layers
+    :param activation: activation function
+    :return: model
     """
     layers = [pt.nn.Linear(n_input, n_neurons), activation()]
     for _ in range(n_layers):

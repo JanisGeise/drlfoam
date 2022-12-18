@@ -1,5 +1,6 @@
 """ Example training script.
 """
+import os
 import sys
 import pickle
 import argparse
@@ -19,6 +20,7 @@ from drlfoam.agent import PPOAgent
 from drlfoam.environment import RotatingCylinder2D
 from drlfoam.execution import LocalBuffer, SlurmBuffer, SlurmConfig
 
+from examples.get_number_of_probes import get_number_of_probes
 from drlfoam.environment.env_model_rotating_cylinder_new_training_routine import *
 from drlfoam.environment.correct_env_model_error import train_correction_models, predict_traj_for_model_error
 
@@ -72,10 +74,13 @@ def main(args):
     # create a directory for training
     makedirs(training_path, exist_ok=True)
 
+    # get number of probes defined in the control dict and init env. correctly
+    n_probes = get_number_of_probes(os.getcwd())
+
     # make a copy of the base environment
     copytree(join(BASE_PATH, "openfoam", "test_cases", "rotatingCylinder2D"),
              join(training_path, "base"), dirs_exist_ok=True)
-    env = RotatingCylinder2D()
+    env = RotatingCylinder2D(n_probes=n_probes)
     env.path = join(training_path, "base")
 
     # if debug active -> add execution of bashrc to Allrun scripts, because otherwise the path to openFOAM is not set
