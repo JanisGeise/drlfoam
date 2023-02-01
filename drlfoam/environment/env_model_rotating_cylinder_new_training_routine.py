@@ -82,7 +82,8 @@ class EnvModel(pt.nn.Module):
         self._state_net = create_simple_network(n_input=n_states + n_cl, n_output=n_states + n_cl,
                                                 n_neurons=n_neurons_cl_p, n_layers=n_layers_cl_p, activation=pt.nn.ReLU)
         self._action_net = create_simple_network(n_input=n_actions_cd, n_output=n_states*n_actions_cd,
-                                                 n_neurons=n_neurons_action_cd, n_layers=n_layers_actions_cd, activation=pt.nn.ReLU)
+                                                 n_neurons=n_neurons_action_cd, n_layers=n_layers_actions_cd,
+                                                 activation=pt.nn.ReLU)
         self._head = create_simple_network(n_states*n_actions_cd + n_states + n_cl, n_out, n_neurons=100, n_layers=2,
                                            activation=pt.nn.ReLU)
         self._n_states = n_states
@@ -254,6 +255,11 @@ def load_trajectory_data(files: list, len_traj: int, n_probes: int):
     """
     observations = [pickle.load(open(file, "rb")) for file in files]
 
+    # in new version of drlfoam: observations are in stored in '.pt' files, not '.pkl', so try to load them in case
+    # 'observations' is empty
+    if not observations:
+        observations = [pt.load(open(file, "rb")) for file in files]
+
     # sort the trajectories from all workers, for training the models, it doesn't matter from which episodes the data is
     shape, n_col = (len_traj, len(observations) * len(observations[0])), 0
     states = pt.zeros((shape[0], n_probes, shape[1]))
@@ -410,8 +416,7 @@ def check_trajectories(cl: pt.Tensor, cd: pt.Tensor, actions: pt.Tensor, alpha: 
 def predict_trajectories(env_model_cl_p: list, env_model_cd: list, episode: int,
                          path: str, states: pt.Tensor, cd: pt.Tensor, cl: pt.Tensor, actions: pt.Tensor,
                          alpha: pt.Tensor, beta: pt.Tensor, n_probes: int, n_input_steps: int, min_max: dict,
-                         len_trajectory: int = 400, corr_cd: FCModel = None, corr_cl: FCModel = None,
-                         corr_p: FCModel = None, correct_traj: bool = False) -> dict and Tuple:
+                         len_trajectory: int = 400) -> dict and Tuple:
     """
     predict a trajectory based on a given initial state and action using trained environment models for cd, and cl-p
 
@@ -429,10 +434,6 @@ def predict_trajectories(env_model_cl_p: list, env_model_cd: list, episode: int,
     :param n_input_steps: number as input time steps for the environment models
     :param min_max: the min- / max-values used for scaling the trajectories to the intervall [0, 1]
     :param len_trajectory: length of the trajectory, 1sec CFD = 100 epochs
-    :param corr_cl: model for correcting the cl-trajectory
-    :param corr_cd: model for correcting the cl-trajectory
-    :param corr_p: model for correcting the p-trajectories
-    :param correct_traj: flag if the model-generated trajectories should be corrected with another model
     :return: the predicted trajectory and a tuple containing the status if the generated trajectory is within realistic
              bounds, and if status = False which parameter is out of bounds
     """
@@ -494,24 +495,9 @@ def predict_trajectories(env_model_cl_p: list, env_model_cd: list, episode: int,
                                                                                  traj_beta[:, t + n_input_steps])
     # re-scale everything for PPO-training and sort into dict
     act_rescaled = denormalize_data(traj_actions, min_max["actions"])[0, :]
-
-    if correct_traj:
-        # use the models to correct the predicted trajectories
-        cd_rescaled, cl_rescaled, p_rescaled = correct_trajectries(corr_cd, corr_cl, corr_p,
-                                                                   pt.cat([traj_cd, traj_actions], dim=1),
-                                                                   pt.cat([traj_cl, traj_actions], dim=1),
-                                                                   pt.cat([traj_p, traj_actions.unsqueeze(-1) * pt.ones(traj_p.size())], dim=1),
-                                                                   min_max=min_max,
-                                                                   load_path_cd="".join([path, "/cd_error_model/",
-                                                                                         "/model_error_cd"]),
-                                                                   load_path_cl="".join([path, "/cl_error_model/",
-                                                                                        "/model_error_cl"]),
-                                                                   load_path_p="".join([path, "/states_error_model/",
-                                                                                        "/model_error_p"]))
-    else:
-        cl_rescaled = denormalize_data(traj_cl, min_max["cl"])[0, :]
-        cd_rescaled = denormalize_data(traj_cd, min_max["cd"])[0, :]
-        p_rescaled = denormalize_data(traj_p, min_max["states"])[0, :, :]
+    cl_rescaled = denormalize_data(traj_cl, min_max["cl"])[0, :]
+    cd_rescaled = denormalize_data(traj_cd, min_max["cd"])[0, :]
+    p_rescaled = denormalize_data(traj_p, min_max["states"])[0, :, :]
 
     # sanity check if the created trajectories make sense
     status = check_trajectories(cl=cl_rescaled, cd=cd_rescaled, actions=act_rescaled, alpha=traj_alpha[0, :],
@@ -603,8 +589,7 @@ def print_trajectory_info(no: int, buffer_size: int, i: int, tra: dict, key: str
 
 
 def fill_buffer_from_models(env_model_cl_p: list, env_model_cd: list, episode: int, path: str, observation: dict,
-                            n_input: int, n_probes: int, buffer_size: int, len_traj: int, corr_cd: FCModel = None,
-                            corr_cl: FCModel = None, corr_p: FCModel = None, correct_traj: bool = False) -> list:
+                            n_input: int, n_probes: int, buffer_size: int, len_traj: int) -> list:
     """
     creates trajectories using data from the CFD environment as initial states and the previously trained environment
     models in order to fill the buffer
@@ -618,13 +603,8 @@ def fill_buffer_from_models(env_model_cl_p: list, env_model_cd: list, episode: i
     :param n_probes: number of probes places in the flow field
     :param buffer_size: size of the buffer, specified in args when running the run_training.py
     :param len_traj: length of the trajectory, 1sec CFD = 100 epochs
-    :param corr_cl: model for correcting the cl-trajectory
-    :param corr_cd: model for correcting the cl-trajectory
-    :param corr_p: model for correcting the p-trajectories
-    :param correct_traj: flag if the model-generated trajectories should be corrected with another model
     :return: a list with the length of the buffer size containing the generated trajectories
     """
-
     predictions = []
 
     # min- / max-values used for normalization
@@ -647,7 +627,7 @@ def fill_buffer_from_models(env_model_cl_p: list, env_model_cd: list, episode: i
                                         observation["actions"][idx:idx + n_input, traj_no],
                                         observation["alpha"][idx:idx + n_input, traj_no],
                                         observation["beta"][idx:idx + n_input, traj_no],
-                                        n_probes, n_input, min_max, len_traj, corr_cd, corr_cl, corr_p, correct_traj)
+                                        n_probes, n_input, min_max, len_traj)
 
         # only add trajectory to buffer if the values make sense, otherwise discard it
         if ok[0]:
@@ -807,47 +787,6 @@ def wrapper_train_env_model_ensemble(train_path: str, cfd_obs: list, len_traj: i
         losses.append(loss)
 
     return cl_p_ensemble, cd_ensemble, pt.tensor(losses), init_data
-
-
-def correct_trajectries(cd_model: FCModel, cl_model: FCModel, p_model: FCModel, cd: pt.Tensor, cl: pt.Tensor,
-                        p: pt.Tensor, load_path_cd: str, load_path_cl: str, load_path_p: str,
-                        min_max: dict) -> Tuple[pt.Tensor, pt.Tensor, pt.Tensor]:
-    """
-    correct the model-generated trajectories with models trained on the differences between model-free and
-    model-generated trajectories
-
-    Note: implemented here instead of in 'correct_env_model_error.py' in order to avoid circular import caused by a bad
-          implementation
-
-    :param cd_model: model for correcting the trajectories fo cd
-    :param cl_model: model for correcting the trajectories fo cl
-    :param p_model: model for correcting the trajectories fo p
-    :param cd: the trajectories of cd, generated by the env. model-ensemble
-    :param cl: the trajectories of cl, generated by the env. model-ensemble
-    :param p: the trajectories of p, generated by the env. model-ensemble
-    :param load_path_cd: path to the state dict of the cd-correction model
-    :param load_path_cl: path to the state dict of the cl-correction model
-    :param load_path_p: path to the state dict of the p-correction model
-    :param min_max: global min- and max-values used for scaling the data for all models (incl. env. ME)
-    :return: corrected trajectories of cl- and cd
-    """
-    # load the models
-    cd_model.load_state_dict(pt.load(f"{load_path_cd}_val.pt"))
-    cl_model.load_state_dict(pt.load(f"{load_path_cl}_val.pt"))
-    p_model.load_state_dict(pt.load(f"{load_path_p}_val.pt"))
-    cd_model.eval()
-    cl_model.eval()
-    p_model.eval()
-
-    # correct the trajectories
-    cd_out = cd_model(cd).detach()
-    cl_out = cl_model(cl).detach()
-    p_out = p_model(p.reshape((p.size()[2], p.size()[0], p.size()[1])))
-    # len(input) = 2*len(output) because input = probes + actions, output is just corrected probes
-    p_out = p_out.detach().reshape((p.size()[0], p_out.size(-1), p.size()[-1]))
-
-    return denormalize_data(cd_out[0, :], min_max["cd"]), denormalize_data(cl_out[0, :], min_max["cl"]),\
-           denormalize_data(p_out[0, :, :], min_max["states"])
 
 
 # since no model buffer is implemented at the moment, there is no access to the save_obs() method... so just do it here
