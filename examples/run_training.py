@@ -18,7 +18,7 @@ from drlfoam.environment import RotatingCylinder2D
 from drlfoam.execution import LocalBuffer, SlurmBuffer, SlurmConfig
 
 from examples.get_number_of_probes import get_number_of_probes
-from drlfoam.environment.env_model_rotating_cylinder_new_training_routine import *
+from drlfoam.environment.env_model_rotating_cylinder import *
 
 
 def print_statistics(actions, rewards):
@@ -83,10 +83,8 @@ def main(args):
     if hasattr(args, "debug"):
         args.set_openfoam_bashrc(path=env.path)
         n_input_time_steps = args.n_input_time_steps
-        debug = args.debug
     else:
         n_input_time_steps = 30
-        debug = False
 
     # create buffer
     if executer == "local":
@@ -123,9 +121,6 @@ def main(args):
     # NOTE: at Re != 100, the parameter len_traj needs to be adjusted accordingly since the simulation is only run to
     # the same dimensionless time but here the pysical time is required, e.g. 5*int(...) for Re = 500
     len_traj, obs_cfd, n_models = 1 * int(100 * round(end_time - buffer.base_env.start_time, 1)), [], 5
-
-    # corr_traj = flag for using additional models to correct the MB-trajectories based on MF-trajectories
-    corr_traj = False
 
     # begin training
     start_time = time()
@@ -243,8 +238,7 @@ class RunTrainingInDebugger:
     """
 
     def __init__(self, episodes: int = 2, runners: int = 2, buffer: int = 2, finish: float = 5.0,
-                 n_input_time_steps: int = 30, seed: int = 0, timeout: int = 1e15, crashed_in_e: int = 5,
-                 out_dir: str = "examples/TEST_for_debugging"):
+                 n_input_time_steps: int = 30, seed: int = 0, timeout: int = 1e15, out_dir: str = "examples/TEST"):
         self.command = ". /usr/lib/openfoam/openfoam2206/etc/bashrc"
         self.output = out_dir
         self.iter = episodes
@@ -256,7 +250,6 @@ class RunTrainingInDebugger:
         self.n_input_time_steps = n_input_time_steps
         self.seed = seed
         self.timeout = timeout
-        self.crashed_in_e = crashed_in_e
 
     def set_openfoam_bashrc(self, path: str):
         system(f"sed -i '5i # source bashrc for openFOAM for debugging purposes\\n{self.command}' {path}/Allrun.pre")
@@ -273,7 +266,7 @@ if __name__ == "__main__":
 
     else:
         # for debugging purposes, set environment variables for the current directory
-        environ["DRL_BASE"] = "/media/janis/Daten/Studienarbeit/drlfoam/"
+        environ["DRL_BASE"] = "/home/janis/Hiwi_ISM/results_drlfoam_MB/drlfoam/"
         environ["DRL_TORCH"] = "".join([environ["DRL_BASE"], "libtorch/"])
         environ["DRL_LIBBIN"] = "".join([environ["DRL_BASE"], "/openfoam/libs/"])
         sys.path.insert(0, environ["DRL_BASE"])
@@ -288,10 +281,7 @@ if __name__ == "__main__":
         chdir(BASE_PATH)
 
         # test MB-DRL on local machine
-        d_args = RunTrainingInDebugger(episodes=80, runners=4, buffer=4, finish=5, n_input_time_steps=30, seed=0,
-                                       out_dir="examples/TEST/",
-                                       # out_dir="examples/e80_r8_b8_f6_Nprobes24_corrModels/seed0/",
-                                       crashed_in_e=90)
+        d_args = RunTrainingInDebugger(episodes=80, runners=4, buffer=4, finish=5, n_input_time_steps=30, seed=0)
         assert d_args.finish > 4, "finish time needs to be > 4s, (the first 4sec are uncontrolled)"
         assert d_args.buffer >= 4, f"buffer needs to >= 4 in order to split trajectories for training and sampling" \
                                    f" initial states"

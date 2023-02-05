@@ -24,4 +24,4 @@ def create_dummy_policy(n_probes: int, cwd: str, abs_action: Union[int, float, p
 
 
 if __name__ == "__main__":
-    create_dummy_policy(12, "..")
+    create_dummy_policy(12, "..", 25.0)

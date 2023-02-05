@@ -1,14 +1,7 @@
 """
-    This script is a version of the 'env_model_rotating_cylinder.py' script using the torch dataloader and other
-    functionalities from PyTorch rather than implementing an 'own' (and maybe unconventional) training routine for the
-    environment models from scratch. At this moment, this training routine requires slightly more computational
-    resources (in terms of run times) and yields worse results wrt the achieved rewards throughout the training.
-
-    A major upside of this training may be the higher flexibility and available functionality which comes from using the
-    methods available in PyTorch. Further, the training routine itself runs much more stable than the training routine
-    implemented in 'env_model_rotating_cylinder.py'.
-
-    Note: this file needs to be located in 'drlfoam/drlfoam/environment/' in order to run a training
+    This script is implements the model-based part for the PPO-training routine. It contains the environment model class
+    as well as functions for loading and sorting the trajectories, training the model ensembles and generating the
+    model-based trajectories for the PPO-training.
 """
 import os
 import pickle
@@ -17,7 +10,7 @@ from typing import Tuple
 from torch.utils.data import DataLoader, TensorDataset
 
 
-class FCModel(pt.nn.Module):
+class EnvironmentModel(pt.nn.Module):
     def __init__(self, n_inputs: int, n_outputs: int, n_layers: int, n_neurons: int,
                  activation: callable = pt.nn.functional.relu):
         """
@@ -30,7 +23,7 @@ class FCModel(pt.nn.Module):
         :param activation: activation function
         :return: none
         """
-        super(FCModel, self).__init__()
+        super(EnvironmentModel, self).__init__()
         self.n_inputs = n_inputs
         self.n_outputs = n_outputs
         self.n_layers = n_layers
@@ -55,77 +48,6 @@ class FCModel(pt.nn.Module):
         for i_layer in range(len(self.layers) - 1):
             x = self.activation(self.layers[i_layer](x))
         return self.layers[-1](x)
-
-
-class EnvModel(pt.nn.Module):
-    def __init__(self, n_states: int, n_cl: int, n_actions_cd: int, n_out: int = 1, n_neurons_action_cd: int = 50,
-                 n_layers_actions_cd: int = 3, n_neurons_cl_p: int = 50, n_layers_cl_p: int = 2):
-        """
-        This class is similar to the FCModel class, but in contrast this is not a fully connected model. In this class,
-        the feature is split into two separate models (internally) in order to control the weighing of the input
-        parameters wrt to the output since the number of probes is dominating wrt to the number of actions
-
-        Note: this class is a (slightly) modified version of a class provided by my supervisor Andre Weiner
-        (https://github.com/AndreWeiner)
-
-        :param n_states: N probes
-        :param n_cl: N cl values
-        :param n_actions_cd: N actions and N cd
-        :param n_out: activation function
-        :param n_neurons_action_cd: number of neurons for the action-cd part of the network
-        :param n_layers_actions_cd: number of layers for the action-cd part of the network
-        :param n_neurons_cl_p: number of neurons for the cl-p part of the network
-        :param n_layers_cl_p: number of layers for the cl-p part of the network
-        :return: None
-        """
-        super(EnvModel, self).__init__()
-        self._state_net = create_simple_network(n_input=n_states + n_cl, n_output=n_states + n_cl,
-                                                n_neurons=n_neurons_cl_p, n_layers=n_layers_cl_p, activation=pt.nn.ReLU)
-        self._action_net = create_simple_network(n_input=n_actions_cd, n_output=n_states*n_actions_cd,
-                                                 n_neurons=n_neurons_action_cd, n_layers=n_layers_actions_cd,
-                                                 activation=pt.nn.ReLU)
-        self._head = create_simple_network(n_states*n_actions_cd + n_states + n_cl, n_out, n_neurons=100, n_layers=2,
-                                           activation=pt.nn.ReLU)
-        self._n_states = n_states
-        self._n_cl = n_cl
-        self._n_actions = n_actions_cd
-        self._n_target = n_out
-
-    def forward(self, x):
-        """
-        connects the output of the two models and feed it into the subsequent model
-
-        :param x: model input (feature)
-        :return: model output (final output)
-        """
-        # assumptions: columns of x contain first all states and then all actions
-        x_state = x[:, :self._n_states+self._n_cl]
-        x_action = x[:, self._n_states+self._n_cl:]
-        x_head = pt.cat((self._state_net(x_state), self._action_net(x_action)), dim=1)
-        return self._head(x_head)
-
-
-def create_simple_network(n_input: int, n_output: int, n_neurons: int, n_layers: int,
-                          activation: callable) -> pt.nn.Sequential:
-    """
-    creates a neural network
-
-    Note: this function was provided by my supervisor Andre Weiner (https://github.com/AndreWeiner)
-
-    :param n_input: number of inputs
-    :param n_output: number of outputs
-    :param n_neurons: number of neurons per layer
-    :param n_layers: number of hidden layers
-    :param activation: activation function
-    :return: model
-    """
-    layers = [pt.nn.Linear(n_input, n_neurons), activation()]
-    for _ in range(n_layers):
-        layers.append(pt.nn.Linear(n_neurons, n_neurons))
-        layers.append(activation())
-        layers.append(pt.nn.LayerNorm(n_neurons))
-    layers.append(pt.nn.Linear(n_neurons, n_output))
-    return pt.nn.Sequential(*layers)
 
 
 def train_model(model: pt.nn.Module, features_train: pt.Tensor, labels_train: pt.Tensor, features_val: pt.Tensor,
@@ -513,7 +435,8 @@ def predict_trajectories(env_model_cl_p: list, env_model_cd: list, episode: int,
 
 def train_env_models(path: str, n_t_input: int, n_probes: int, observations: dict, n_neurons: int = 100,
                      n_layers: int = 3, n_neurons_cd: int = 50, n_layers_cd: int = 5, epochs: int = 2500,
-                     epochs_cd: int = 2500, load: bool = False, model_no: int = 0) -> FCModel and FCModel and list:
+                     epochs_cd: int = 2500, load: bool = False,
+                     model_no: int = 0) -> EnvironmentModel and EnvironmentModel and list:
     """
     initializes two environment models, trains and validates them based on the sampled data from the CFD
     environment. The models are trained and validated using the previous 2 episodes run in the CFD environment
@@ -539,11 +462,10 @@ def train_env_models(path: str, n_t_input: int, n_probes: int, observations: dic
     print(f"start training the environment model no. {model_no} for cl & p")
 
     # initialize environment networks
-    env_model_cl_p = FCModel(n_inputs=n_t_input * (n_probes + 3), n_outputs=n_probes + 1, n_neurons=n_neurons,
-                             n_layers=n_layers)
-    env_model_cd = FCModel(n_inputs=n_t_input * (n_probes + 3), n_outputs=1, n_neurons=n_neurons_cd,
-                           n_layers=n_layers_cd)
-    # env_model_cd = EnvModel(n_states=n_t_input * n_probes, n_cl=n_t_input, n_actions_cd=2*n_t_input, n_out=1)
+    env_model_cl_p = EnvironmentModel(n_inputs=n_t_input * (n_probes + 3), n_outputs=n_probes + 1, n_neurons=n_neurons,
+                                      n_layers=n_layers)
+    env_model_cd = EnvironmentModel(n_inputs=n_t_input * (n_probes + 3), n_outputs=1, n_neurons=n_neurons_cd,
+                                    n_layers=n_layers_cd)
 
     # load environment models trained in the previous CFD episode
     if load:
@@ -790,6 +712,7 @@ def wrapper_train_env_model_ensemble(train_path: str, cfd_obs: list, len_traj: i
 
 
 # since no model buffer is implemented at the moment, there is no access to the save_obs() method... so just do it here
+# TODO: change to 'observations.pt' as it is done in new drlfoam version
 def save_trajectories(path, e, observations, name: str = "/observations_"):
     with open("".join([path, name, f"{e}.pkl"]), "wb") as f:
         pickle.dump(observations, f, protocol=pickle.HIGHEST_PROTOCOL)
