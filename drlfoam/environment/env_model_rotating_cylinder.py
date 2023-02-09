@@ -4,12 +4,14 @@
     model-based trajectories for the PPO-training.
 """
 import os
-import pickle
 import torch as pt
 from typing import Tuple
 from torch.utils.data import DataLoader, TensorDataset
+from blitz.modules import BayesianLinear
+from blitz.utils import variational_estimator
 
 
+@variational_estimator
 class EnvironmentModel(pt.nn.Module):
     def __init__(self, n_inputs: int, n_outputs: int, n_layers: int, n_neurons: int,
                  activation: callable = pt.nn.functional.relu):
@@ -33,13 +35,14 @@ class EnvironmentModel(pt.nn.Module):
 
         # input layer to first hidden layer
         self.layers.append(pt.nn.Linear(self.n_inputs, self.n_neurons))
-        self.layers.append(pt.nn.LayerNorm(self.n_neurons))
+        # self.layers.append(pt.nn.LayerNorm(self.n_neurons))
 
         # add more hidden layers if specified
         if self.n_layers > 1:
             for hidden in range(self.n_layers - 1):
-                self.layers.append(pt.nn.Linear(self.n_neurons, self.n_neurons))
-                self.layers.append(pt.nn.LayerNorm(self.n_neurons))
+                # self.layers.append(pt.nn.Linear(self.n_neurons, self.n_neurons))
+                # self.layers.append(pt.nn.LayerNorm(self.n_neurons))
+                self.layers.append(BayesianLinear(self.n_neurons, self.n_neurons))
 
         # last hidden layer to output layer
         self.layers.append(pt.nn.Linear(self.n_neurons, self.n_outputs))
@@ -48,6 +51,21 @@ class EnvironmentModel(pt.nn.Module):
         for i_layer in range(len(self.layers) - 1):
             x = self.activation(self.layers[i_layer](x))
         return self.layers[-1](x)
+
+
+def evaluate_regression(regressor, x, y, samples=25, std_multiplier=2):
+    """
+    taken from https://github.com/piEsposito/blitz-bayesian-deep-learning
+    """
+    preds = [regressor(x) for _ in range(samples)]
+    preds = pt.stack(preds)
+    means = preds.mean(dim=0)
+    stds = preds.std(dim=0)
+    ci_upper = means + (std_multiplier * stds)
+    ci_lower = means - (std_multiplier * stds)
+    ic_acc = (ci_lower <= y) * (ci_upper >= y)
+    ic_acc = ic_acc.float().mean()
+    return ic_acc, (ci_upper >= y).float().mean(), (ci_lower <= y).float().mean()
 
 
 def train_model(model: pt.nn.Module, features_train: pt.Tensor, labels_train: pt.Tensor, features_val: pt.Tensor,
@@ -95,8 +113,10 @@ def train_model(model: pt.nn.Module, features_train: pt.Tensor, labels_train: pt
         model.train()
         for feature, label in dataloader_train:
             optimizer.zero_grad()
-            prediction = model(feature).squeeze()
-            loss_train = criterion(prediction, label.squeeze())
+            # prediction = model(feature).squeeze()
+            # loss_train = criterion(prediction, label.squeeze())
+            loss_train = model.sample_elbo(inputs=feature, labels=label, criterion=criterion, sample_nbr=batch_size,
+                                           complexity_cost_weight=1.0/batch_size)
             loss_train.backward()
             optimizer.step()
             t_loss_tmp.append(loss_train.item())
@@ -105,8 +125,9 @@ def train_model(model: pt.nn.Module, features_train: pt.Tensor, labels_train: pt
         # validation loop
         with pt.no_grad():
             for feature, label in dataloader_val:
-                prediction = model(feature).squeeze()
-                loss_val = criterion(prediction, label.squeeze())
+                # prediction = model(feature).squeeze()
+                # loss_val = criterion(prediction, label.squeeze())
+                loss_val, _, _ = evaluate_regression(model, feature, label, samples=batch_size, std_multiplier=1)
                 v_loss_tmp.append(pt.mean(loss_val).item())
         validation_loss.append(pt.mean(pt.tensor(v_loss_tmp)))
 
@@ -168,19 +189,15 @@ def denormalize_data(x: pt.Tensor, x_min_max: list) -> pt.Tensor:
 
 def load_trajectory_data(files: list, len_traj: int, n_probes: int):
     """
-    load the trajectory data from the observations_*.pkl files
+    load the trajectory data from the observations_*.pt files
 
     :param files: list containing the file names of the last two episodes run in CFD environment
     :param len_traj: length of the trajectory, 1sec CFD = 100 epochs
     :param n_probes: number of probes placed in the flow field
     :return: cl, cd, actions, states, alpha, beta
     """
-    observations = [pickle.load(open(file, "rb")) for file in files]
-
-    # in new version of drlfoam: observations are in stored in '.pt' files, not '.pkl', so try to load them in case
-    # 'observations' is empty
-    if not observations:
-        observations = [pt.load(open(file, "rb")) for file in files]
+    # in new version of drlfoam the observations are in stored in '.pt' files
+    observations = [pt.load(open(file, "rb")) for file in files]
 
     # sort the trajectories from all workers, for training the models, it doesn't matter from which episodes the data is
     shape, n_col = (len_traj, len(observations) * len(observations[0])), 0
@@ -367,7 +384,7 @@ def predict_trajectories(env_model_cl_p: list, env_model_cd: list, episode: int,
         env_model_cd[model].load_state_dict(pt.load(f"{path}/cd_model/bestModel_no{model}_val.pt"))
 
     # load current policy network (saved at the end of the previous episode)
-    policy_model = (pickle.load(open(path + f"/policy_{episode - 1}.pkl", "rb"))).eval()
+    policy_model = (pt.jit.load(open(path + f"/policy_trace_{episode - 1}.pt", "rb"))).eval()
 
     # use batch for prediction, because batch normalization only works for batch size > 1
     # -> at least 2 trajectories required
@@ -399,10 +416,16 @@ def predict_trajectories(env_model_cl_p: list, env_model_cd: list, episode: int,
         tmp_cl_p_model = env_model_cl_p[pt.randint(low=0, high=len(env_model_cl_p), size=(1, 1)).item()]
 
         # make prediction for cd
-        traj_cd[:, t + n_input_steps] = tmp_cd_model(feature).squeeze().detach()
+        # traj_cd[:, t + n_input_steps] = tmp_cd_model(feature).squeeze().detach()
+
+        # in case of invalid trajectories, the mean isn't changing if always avg. over const. amount of predictions
+        traj_cd[:, t + n_input_steps] = pt.stack([tmp_cd_model(feature).squeeze().detach() for _ in
+                                                  range(pt.randint(50, high=100, size=(1, )).item())]).mean(dim=0)
 
         # make prediction for probes and cl
-        prediction_cl_p = tmp_cl_p_model(feature).squeeze().detach()
+        # prediction_cl_p = tmp_cl_p_model(feature).squeeze().detach()
+        prediction_cl_p = pt.stack([tmp_cl_p_model(feature).squeeze().detach() for _ in
+                                    range(pt.randint(50, high=100, size=(1, )).item())]).mean(dim=0)
         traj_p[:, t + n_input_steps, :] = prediction_cl_p[:, :n_probes]
         traj_cl[:, t + n_input_steps] = prediction_cl_p[:, -1]
 
@@ -540,6 +563,7 @@ def fill_buffer_from_models(env_model_cl_p: list, env_model_cd: list, episode: i
         # for each trajectory sample input states from all available data within the CFD buffer
         traj_no = pt.randint(low=0, high=observation["cd"].size()[1], size=(1, 1)).item()
         idx = pt.randint(low=0, high=observation["cd"].size()[0] - n_input - 2, size=(1, 1)).item()
+        # idx = 0     # always start at t = 4s
 
         # then predict the trajectory (the env. models are loaded in predict trajectory function)
         pred, ok = predict_trajectories(env_model_cl_p, env_model_cd, episode, path,
@@ -712,10 +736,8 @@ def wrapper_train_env_model_ensemble(train_path: str, cfd_obs: list, len_traj: i
 
 
 # since no model buffer is implemented at the moment, there is no access to the save_obs() method... so just do it here
-# TODO: change to 'observations.pt' as it is done in new drlfoam version
 def save_trajectories(path, e, observations, name: str = "/observations_"):
-    with open("".join([path, name, f"{e}.pkl"]), "wb") as f:
-        pickle.dump(observations, f, protocol=pickle.HIGHEST_PROTOCOL)
+    pt.save(observations, "".join([path, name, f"{e}.pt"]))
 
 
 if __name__ == "__main__":

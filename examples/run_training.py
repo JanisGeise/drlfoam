@@ -128,9 +128,9 @@ def main(args):
     buffer.base_env.end_time = end_time
     buffer.reset()
 
-    # len_traj = length of the trajectory, assuming constant sample rate of 100 Hz (default value)
+    # len_traj = length of the trajectory in [s], assuming constant sample rate of 100 Hz (default value)
     # NOTE: at Re != 100, the parameter len_traj needs to be adjusted accordingly since the simulation is only run to
-    # the same dimensionless time but here the pysical time is required, e.g. 5*int(...) for Re = 500
+    # the same dimensionless time but here the physical time is required, e.g. 5*int(...) for Re = 500
     len_traj, obs_cfd, n_models = 1 * int(100 * round(end_time - buffer.base_env.start_time, 1)), [], 5
 
     # begin training
@@ -140,7 +140,7 @@ def main(args):
         # every 5th episode sample from CFD
         if e == 0 or e % 5 == 0:
             # save path of CFD episodes -> models should be trained with all CFD data available
-            obs_cfd.append("".join([training_path + f"/observations_{e}.pkl"]))
+            obs_cfd.append("".join([training_path + f"/observations_{e}.pt"]))
 
             # set episode for save_trajectory() method, because n_fills is now updated only every 5th episode
             if e != 0:
