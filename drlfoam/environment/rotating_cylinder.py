@@ -39,24 +39,25 @@ def _parse_trajectory(path: str) -> DataFrame:
 
 
 class RotatingCylinder2D(Environment):
-    def __init__(self, r1: float = 3.0, r2: float = 0.1, n_probes: int = 12):
+    def __init__(self, r1: float = 3.0, r2: float = 1.0, r3: float = 0.1, n_probes: int = 12):
         super(RotatingCylinder2D, self).__init__(
             join(TESTCASE_PATH, "rotatingCylinder2D"), "Allrun.pre",
             "Allrun", "Allclean", 2, n_probes, 1
         )
         self._r1 = r1
         self._r2 = r2
+        self._r3 = r3
         self._initialized = False
         self._start_time = 0
         self._end_time = 4
-        self._control_interval = 20
+        self._control_interval = 0.01
         self._train = True
         self._seed = 0
         self._action_bounds = 5.0
         self._policy = "policy.pt"
 
     def _reward(self, cd: pt.Tensor, cl: pt.Tensor) -> pt.Tensor:
-        return self._r1 - (cd + self._r2 * cl.abs())
+        return self._r1 - (self._r2 * cd + self._r3 * cl.abs())
 
     @property
     def start_time(self) -> float:
@@ -65,9 +66,6 @@ class RotatingCylinder2D(Environment):
     @start_time.setter
     def start_time(self, value: float):
         check_pos_float(value, "start_time", with_zero=True)
-        proc = True if self.initialized else False
-        new = f"        startTime     {value};"
-        replace_line_latest(self.path, "U", "startTime", new, proc)
         replace_line_in_file(
             join(self.path, "system", "controlDict"),
             "timeStart",
@@ -84,7 +82,7 @@ class RotatingCylinder2D(Environment):
         check_pos_float(value, "end_time", with_zero=True)
         replace_line_in_file(
             join(self.path, "system", "controlDict"),
-            "endTime",
+            "endTime ",
             f"endTime         {value};"
         )
         self._end_time = value
@@ -95,10 +93,7 @@ class RotatingCylinder2D(Environment):
 
     @control_interval.setter
     def control_interval(self, value: int):
-        check_pos_int(value, "control_interval")
-        proc = True if self.initialized else False
-        new = f"        interval        {value};"
-        replace_line_latest(self.path, "U", "interval", new, proc)
+        check_pos_float(value, "control_interval")
         replace_line_in_file(
             join(self.path, "system", "controlDict"),
             "executeInterval",

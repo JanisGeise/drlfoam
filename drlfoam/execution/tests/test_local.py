@@ -50,11 +50,9 @@ class TestLocalBuffer():
         base_env.end_time = 0.015
         buffer = LocalBuffer(path, base_env, 2, 2)
         buffer.prepare()
-        base_env.end_time = 0.03
         assert isfile(join(path, base_env.path, "log.blockMesh"))
         assert isfile(join(path, base_env.path, "trajectory.csv"))
         assert isdir(join(path, base_env.path, "postProcessing"))
-        envs = buffer.envs
         buffer.reset()
         assert not isfile(join(path, "copy_0", "trajectory.csv"))
         assert not isdir(join(path, "copy_0", "postProcessing"))
@@ -63,7 +61,7 @@ class TestLocalBuffer():
         assert isfile(join(path, "copy_0", "log.pimpleFoam"))
         assert isdir(join(path, "copy_0", "postProcessing"))
         # implicit test of save_trajectory()
-        assert isfile(join(path, "observations_0.pkl"))
+        assert isfile(join(path, "observations_0.pt"))
         assert buffer._n_fills == 1
         buffer.clean()
         assert not isfile(join(path, "copy_0", "log.blockMesh"))
