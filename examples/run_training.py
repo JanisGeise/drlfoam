@@ -131,7 +131,7 @@ def main(args):
     # len_traj = length of the trajectory in [s], assuming constant sample rate of 100 Hz (default value)
     # NOTE: at Re != 100, the parameter len_traj needs to be adjusted accordingly since the simulation is only run to
     # the same dimensionless time but here the physical time is required, e.g. 5*int(...) for Re = 500
-    len_traj, obs_cfd, n_models = 1 * int(100 * round(end_time - buffer.base_env.start_time, 1)), [], 5
+    len_traj, obs_cfd, n_models = 1 * int(100 * round(end_time - buffer.base_env.start_time, 1)), [], 1
 
     # begin training
     start_time = time()
@@ -180,7 +180,7 @@ def main(args):
             predicted_traj = fill_buffer_from_models(cl_p_models, cd_models, e, training_path,
                                                      observation=obs, n_probes=env.n_states,
                                                      n_input=n_input_time_steps, len_traj=len_traj,
-                                                     buffer_size=buffer_size)
+                                                     buffer_size=buffer_size, action_bounds=env.action_bounds)
 
             # if len(predicted_traj) < buffer size -> discard trajectories from models and go back to CFD
             if len(predicted_traj) < buffer_size:
