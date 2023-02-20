@@ -147,3 +147,4 @@ dmypy.json
 /examples/submit_jobs.sh
 /examples/submit_jobs_MB_MF.sh
 /examples/run_training_MF.py
+/openfoam/test_cases/rotatingCylinder2D/policy.pt

@@ -7,8 +7,8 @@ import os
 import torch as pt
 from typing import Tuple, Union
 from torch.utils.data import DataLoader, TensorDataset
-from blitz.modules import BayesianLinear
-from blitz.utils import variational_estimator
+# from blitz.modules import *
+# from blitz.utils import variational_estimator
 
 
 # @variational_estimator
@@ -36,6 +36,8 @@ class EnvironmentModel(pt.nn.Module):
         # input layer to first hidden layer
         self.layers.append(pt.nn.Linear(self.n_inputs, self.n_neurons))
         self.layers.append(pt.nn.LayerNorm(self.n_neurons))
+        # self.layers.append(pt.nn.Dropout())
+        # self.layers.append(BayesianLinear(self.n_inputs, self.n_neurons))
 
         # add more hidden layers if specified
         if self.n_layers > 1:
@@ -43,9 +45,11 @@ class EnvironmentModel(pt.nn.Module):
                 self.layers.append(pt.nn.Linear(self.n_neurons, self.n_neurons))
                 self.layers.append(pt.nn.LayerNorm(self.n_neurons))
                 # self.layers.append(BayesianLinear(self.n_neurons, self.n_neurons))
+                # self.layers.append(pt.nn.Dropout())
 
         # last hidden layer to output layer
         self.layers.append(pt.nn.Linear(self.n_neurons, self.n_outputs))
+        # self.layers.append(BayesianLinear(self.n_neurons, self.n_outputs))
 
     def forward(self, x):
         for i_layer in range(len(self.layers) - 1):
@@ -144,8 +148,8 @@ def train_model(model: pt.nn.Module, features_train: pt.Tensor, labels_train: pt
 
         # print some info after every 100 epochs
         if epoch % 100 == 0:
-            print(f"finished epoch {epoch}, training loss = {round(training_loss[-1].item(), 8)}, "
-                  f"validation loss = {round(validation_loss[-1].item(), 8)}")
+            print(f"epoch {epoch}, avg. training loss = {round(pt.mean(pt.tensor(training_loss[-50:])).item(), 8)}, "
+                  f"avg. validation loss = {round(pt.mean(pt.tensor(validation_loss[-50:])).item(), 8)}")
 
         # check every 50 epochs if model performs well on validation data or validation loss converges. Completing 150
         # epochs ensures that the loss can be plotted later (if all models have different number of epochs,
@@ -411,16 +415,16 @@ def predict_trajectories(env_model_cl_p: list, env_model_cd: list, episode: int,
         tmp_cl_p_model = env_model_cl_p[pt.randint(low=0, high=len(env_model_cl_p), size=(1, 1)).item()]
 
         # make prediction for cd
-        # traj_cd[:, t + n_input_steps] = tmp_cd_model(feature).squeeze().detach()
+        traj_cd[:, t + n_input_steps] = tmp_cd_model(feature).squeeze().detach()
 
         # in case of invalid trajectories, the mean isn't changing if always avg. over const. amount of predictions
-        traj_cd[:, t + n_input_steps] = pt.stack([tmp_cd_model(feature).squeeze().detach() for _ in
-                                                  range(pt.randint(50, high=100, size=(1, )).item())]).mean(dim=0)
+        # traj_cd[:, t + n_input_steps] = pt.stack([tmp_cd_model(feature).squeeze().detach() for _ in
+        #                                           range(pt.randint(50, high=100, size=(1, )).item())]).mean(dim=0)
 
         # make prediction for probes and cl
-        # prediction_cl_p = tmp_cl_p_model(feature).squeeze().detach()
-        prediction_cl_p = pt.stack([tmp_cl_p_model(feature).squeeze().detach() for _ in
-                                    range(pt.randint(50, high=100, size=(1, )).item())]).mean(dim=0)
+        prediction_cl_p = tmp_cl_p_model(feature).squeeze().detach()
+        # prediction_cl_p = pt.stack([tmp_cl_p_model(feature).squeeze().detach() for _ in
+        #                             range(pt.randint(50, high=100, size=(1, )).item())]).mean(dim=0)
         traj_p[:, t + n_input_steps, :] = prediction_cl_p[:, :n_probes]
         traj_cl[:, t + n_input_steps] = prediction_cl_p[:, -1]
 
@@ -729,7 +733,12 @@ def wrapper_train_env_model_ensemble(train_path: str, cfd_obs: list, len_traj: i
         cd_ensemble.append(env_model_cd.eval())
         losses.append(loss)
 
-    return cl_p_ensemble, cd_ensemble, pt.tensor(losses), init_data
+    # in case only one model is used, then return the loss of the first model
+    if not losses:
+        losses = loss
+        return cl_p_ensemble, cd_ensemble, losses, init_data
+    else:
+        return cl_p_ensemble, cd_ensemble, pt.tensor(losses), init_data
 
 
 # since no model buffer is implemented at the moment, there is no access to the save_obs() method... so just do it here
