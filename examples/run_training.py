@@ -164,10 +164,8 @@ def main(args):
 
             # save train- and validation losses of the environment models
             if n_models == 1:
-                losses = {"train_loss_cl_p": [l[i][0][0] for i in range(len(l))],
-                          "train_loss_cd": [l[i][0][1] for i in range(len(l))],
-                          "val_loss_cl_p": [l[i][1][0] for i in range(len(l))],
-                          "val_loss_cd": [l[i][1][1] for i in range(len(l))]}
+                losses = {"train_loss_cl_p": l[0][0], "train_loss_cd": l[0][1], "val_loss_cl_p": l[1][0],
+                          "val_loss_cd": l[1][1]}
                 save_trajectories(training_path, e, losses, name="/env_model_loss_")
             else:
                 losses = {"train_loss_cl_p": l[:, 0, 0, :], "train_loss_cd": l[:, 0, 1, :],
@@ -268,7 +266,7 @@ class RunTrainingInDebugger:
 
 if __name__ == "__main__":
     # option for running the training in IDE, e.g. in debugger
-    DEBUG = True
+    DEBUG = False
 
     if not DEBUG:
         main(parseArguments())
