@@ -73,7 +73,7 @@ def evaluate_regression(regressor, x, y, samples=25, std_multiplier=2):
 
 
 def train_model(model: pt.nn.Module, features_train: pt.Tensor, labels_train: pt.Tensor, features_val: pt.Tensor,
-                labels_val: pt.Tensor, epochs: int = 2000, lr: float = 0.01, batch_size: int = 25, stop: float = -1e-7,
+                labels_val: pt.Tensor, epochs: int = 2500, lr: float = 0.01, batch_size: int = 25, stop: float = -1e-7,
                 save_model: bool = True, save_name: str = "bestModel", save_dir: str = "env_model") -> Tuple[list, list]:
     """
     train environment model based on sampled trajectories
@@ -563,8 +563,8 @@ def fill_buffer_from_models(env_model_cl_p: list, env_model_cd: list, episode: i
 
         # for each trajectory sample input states from all available data within the CFD buffer
         traj_no = pt.randint(low=0, high=observation["cd"].size()[1], size=(1, 1)).item()
-        idx = pt.randint(low=0, high=observation["cd"].size()[0] - n_input - 2, size=(1, 1)).item()
-        # idx = 0     # always start at t = 4s
+        # idx = pt.randint(low=0, high=observation["cd"].size()[0] - n_input - 2, size=(1, 1)).item()
+        idx = 0     # always start at t = 4s, no random sampling of initial states
 
         # then predict the trajectory (the env. models are loaded in predict trajectory function)
         pred, ok = predict_trajectories(env_model_cl_p, env_model_cd, episode, path,
