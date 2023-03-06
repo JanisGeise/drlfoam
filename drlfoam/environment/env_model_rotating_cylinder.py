@@ -7,11 +7,13 @@ import os
 import torch as pt
 from typing import Tuple, Union
 from torch.utils.data import DataLoader, TensorDataset
-# from blitz.modules import *
-# from blitz.utils import variational_estimator
 
 
-# @variational_estimator
+from drlfoam.agent import PPOAgent
+from drlfoam.agent.agent import compute_gae
+from drlfoam.constants import EPS_SP
+
+
 class EnvironmentModel(pt.nn.Module):
     def __init__(self, n_inputs: int, n_outputs: int, n_layers: int, n_neurons: int,
                  activation: callable = pt.nn.functional.leaky_relu):
@@ -36,40 +38,20 @@ class EnvironmentModel(pt.nn.Module):
         # input layer to first hidden layer
         self.layers.append(pt.nn.Linear(self.n_inputs, self.n_neurons))
         self.layers.append(pt.nn.LayerNorm(self.n_neurons))
-        # self.layers.append(pt.nn.Dropout())
-        # self.layers.append(BayesianLinear(self.n_inputs, self.n_neurons))
 
         # add more hidden layers if specified
         if self.n_layers > 1:
             for hidden in range(self.n_layers - 1):
                 self.layers.append(pt.nn.Linear(self.n_neurons, self.n_neurons))
                 self.layers.append(pt.nn.LayerNorm(self.n_neurons))
-                # self.layers.append(BayesianLinear(self.n_neurons, self.n_neurons))
-                # self.layers.append(pt.nn.Dropout())
 
         # last hidden layer to output layer
         self.layers.append(pt.nn.Linear(self.n_neurons, self.n_outputs))
-        # self.layers.append(BayesianLinear(self.n_neurons, self.n_outputs))
 
     def forward(self, x):
         for i_layer in range(len(self.layers) - 1):
             x = self.activation(self.layers[i_layer](x))
         return self.layers[-1](x)
-
-
-def evaluate_regression(regressor, x, y, samples=25, std_multiplier=2):
-    """
-    taken from https://github.com/piEsposito/blitz-bayesian-deep-learning
-    """
-    preds = [regressor(x) for _ in range(samples)]
-    preds = pt.stack(preds)
-    means = preds.mean(dim=0)
-    stds = preds.std(dim=0)
-    ci_upper = means + (std_multiplier * stds)
-    ci_lower = means - (std_multiplier * stds)
-    ic_acc = (ci_lower <= y) * (ci_upper >= y)
-    ic_acc = ic_acc.float().mean()
-    return ic_acc, (ci_upper >= y).float().mean(), (ci_lower <= y).float().mean()
 
 
 def train_model(model: pt.nn.Module, features_train: pt.Tensor, labels_train: pt.Tensor, features_val: pt.Tensor,
@@ -119,8 +101,6 @@ def train_model(model: pt.nn.Module, features_train: pt.Tensor, labels_train: pt
             optimizer.zero_grad()
             prediction = model(feature).squeeze()
             loss_train = criterion(prediction, label.squeeze())
-            # loss_train = model.sample_elbo(inputs=feature, labels=label, criterion=criterion, sample_nbr=3,
-            #                                complexity_cost_weight=1.0/batch_size)
             loss_train.backward()
             optimizer.step()
             t_loss_tmp.append(loss_train.item())
@@ -131,7 +111,6 @@ def train_model(model: pt.nn.Module, features_train: pt.Tensor, labels_train: pt
             for feature, label in dataloader_val:
                 prediction = model(feature).squeeze()
                 loss_val = criterion(prediction, label.squeeze())
-                # loss_val, _, _ = evaluate_regression(model, feature, label, samples=batch_size, std_multiplier=1)
                 v_loss_tmp.append(pt.mean(loss_val).item())
         validation_loss.append(pt.mean(pt.tensor(v_loss_tmp)))
 
@@ -256,7 +235,7 @@ def split_data(files: list, len_traj: int, n_probes: int, n_train: float = 0.7, 
     :param n_e_cfd: number of currently available episodes run in CFD
     :return: dict containing the loaded, sorted and normalized data as well as the data for training- and validation
     """
-    data = {}
+    data, idx_train, idx_val = {}, 0, 0
     cl, cd, actions, states, alpha, beta, rewards = load_trajectory_data(files[-2:], len_traj, n_probes)
 
     # delete the allocated columns of the failed trajectories (since they would alter the mean values)
@@ -354,7 +333,7 @@ def check_trajectories(cl: pt.Tensor, cd: pt.Tensor, actions: pt.Tensor, alpha: 
 def predict_trajectories(env_model_cl_p: list, env_model_cd: list, episode: int,
                          path: str, states: pt.Tensor, cd: pt.Tensor, cl: pt.Tensor, actions: pt.Tensor,
                          alpha: pt.Tensor, beta: pt.Tensor, n_probes: int, n_input_steps: int, min_max: dict,
-                         len_trajectory: int = 400) -> dict and Tuple:
+                         len_trajectory: int = 400, model_no: int = None) -> dict and Tuple:
     """
     predict a trajectory based on a given initial state and action using trained environment models for cd, and cl-p
 
@@ -372,6 +351,7 @@ def predict_trajectories(env_model_cl_p: list, env_model_cd: list, episode: int,
     :param n_input_steps: number as input time steps for the environment models
     :param min_max: the min- / max-values used for scaling the trajectories to the intervall [0, 1]
     :param len_trajectory: length of the trajectory, 1sec CFD = 100 epochs
+    :param model_no: index of the model used for predictions, if None then each step a model is randomly chosen
     :return: the predicted trajectory and a tuple containing the status if the generated trajectory is within realistic
              bounds, and if status = False which parameter is out of bounds
     """
@@ -410,21 +390,19 @@ def predict_trajectories(env_model_cl_p: list, env_model_cd: list, episode: int,
                                        dim=2),
                              start_dim=1)
 
-        # randomly choose an environment model to make a prediction
-        tmp_cd_model = env_model_cd[pt.randint(low=0, high=len(env_model_cl_p), size=(1, 1)).item()]
-        tmp_cl_p_model = env_model_cl_p[pt.randint(low=0, high=len(env_model_cl_p), size=(1, 1)).item()]
+        if model_no is None:
+            # randomly choose an environment model to make a prediction if no model is specified
+            tmp_cd_model = env_model_cd[pt.randint(low=0, high=len(env_model_cl_p), size=(1, 1)).item()]
+            tmp_cl_p_model = env_model_cl_p[pt.randint(low=0, high=len(env_model_cl_p), size=(1, 1)).item()]
+        else:
+            tmp_cd_model = env_model_cd[model_no]
+            tmp_cl_p_model = env_model_cl_p[model_no]
 
         # make prediction for cd
         traj_cd[:, t + n_input_steps] = tmp_cd_model(feature).squeeze().detach()
 
-        # in case of invalid trajectories, the mean isn't changing if always avg. over const. amount of predictions
-        # traj_cd[:, t + n_input_steps] = pt.stack([tmp_cd_model(feature).squeeze().detach() for _ in
-        #                                           range(pt.randint(50, high=100, size=(1, )).item())]).mean(dim=0)
-
         # make prediction for probes and cl
         prediction_cl_p = tmp_cl_p_model(feature).squeeze().detach()
-        # prediction_cl_p = pt.stack([tmp_cl_p_model(feature).squeeze().detach() for _ in
-        #                             range(pt.randint(50, high=100, size=(1, )).item())]).mean(dim=0)
         traj_p[:, t + n_input_steps, :] = prediction_cl_p[:, :n_probes]
         traj_cl[:, t + n_input_steps] = prediction_cl_p[:, -1]
 
@@ -532,9 +510,68 @@ def print_trajectory_info(no: int, buffer_size: int, i: int, tra: dict, key: str
         print(f"\tmin / max / mean {val[0]}: {round(val[1], 5)}, {round(val[2], 5)}, {round(val[3], 5)}")
 
 
+def assess_model_performance(s_model: list, a_model: list, r_model: list, agent: PPOAgent) -> list:
+    """
+    computes the policy loss of the current MB-episode for each model in the ensemble
+
+    :param s_model: predicted states by each environment model
+    :param a_model: actions predicted by policy network for each environment model
+    :param r_model: predicted rewards by each environment model
+    :param agent: PPO-agent
+    :return: policy loss wrt environment models
+    """
+    policy_loss = []
+
+    # assess the policy loss for each model
+    for m in range(a_model[0].size()[-1]):
+        values = [agent._value(s[:, :, m]) for s in s_model]
+
+        log_p_old = pt.cat([agent._policy.predict(s[:-1, :, m], a[:-1, m])[0] for s, a in zip(s_model, a_model)])
+        gaes = pt.cat([compute_gae(r[:, m], v, agent._gamma, agent._lam) for r, v in zip(r_model, values)])
+        gaes = (gaes - gaes.mean()) / (gaes.std() + EPS_SP)
+
+        states_wf = pt.cat([s[:-1, :, m] for s in s_model])
+        actions_wf = pt.cat([a[:-1, m] for a in a_model])
+        log_p_new, entropy = agent._policy.predict(states_wf, actions_wf)
+        p_ratio = (log_p_new - log_p_old).exp()
+        policy_objective = gaes * p_ratio
+        policy_objective_clipped = gaes * p_ratio.clamp(1.0 - agent._policy_clip, 1.0 + agent._policy_clip)
+        policy_loss.append(-pt.min(policy_objective, policy_objective_clipped).mean().item())
+
+    return policy_loss
+
+
+def check_switching(current_episode: int, last_cfd: int, policy_loss: pt.Tensor, threshold: float = 0.6) -> bool:
+    """
+    check if the environment models are still improving the policy or if it should be switched back to CFD in order to
+    update the environment models
+
+    :param current_episode: current episode
+    :param last_cfd: last MF-episode ran in CFD
+    :param policy_loss: policy losses of the current and last MB-episode
+    :param threshold: amount of model which have to improve the policy in order to continue training with models
+    :return: bool if training should be switch back to CFD in order to update the environment models
+    """
+    # in the 1st two MB episodes of training, policy loss has no or just one entry, so diff can't be computed
+    if len(policy_loss) < 2:
+        switch = 0
+    else:
+        # mask difference of policy loss for each model -> 1 if policy improved, 0 if not
+        diff = ((policy_loss[-1] - policy_loss[0]) > 0.0).int()
+
+        # if policy for less than x% of the models improves, then switch to CFD -> 0 = no switching required, 1 = switch
+        switch = [0 if sum(diff)/len(diff) >= threshold else 1][0]
+
+    # we need 2 subsequent MB-episodes after each CFD episode in order to determine if policy improves in MB-training
+    if (current_episode - last_cfd < 2) or switch == 0:
+        return False
+    else:
+        return True
+
+
 def fill_buffer_from_models(env_model_cl_p: list, env_model_cd: list, episode: int, path: str, observation: dict,
                             n_input: int, n_probes: int, buffer_size: int, len_traj: int,
-                            action_bounds: Union[int, float] = 5.0) -> list:
+                            agent: PPOAgent) -> Tuple[list, list]:
     """
     creates trajectories using data from the CFD environment as initial states and the previously trained environment
     models in order to fill the buffer
@@ -548,10 +585,12 @@ def fill_buffer_from_models(env_model_cl_p: list, env_model_cd: list, episode: i
     :param n_probes: number of probes places in the flow field
     :param buffer_size: size of the buffer, specified in args when running the run_training.py
     :param len_traj: length of the trajectory, 1sec CFD = 100 epochs
-    :param action_bounds: min.- and max. allowed action to take
+    :param agent: PPO-agent
     :return: a list with the length of the buffer size containing the generated trajectories
     """
-    predictions = []
+    predictions, shape,  = [], (len_traj, len(env_model_cl_p))
+    r_model_tmp, a_model_tmp, s_model_tmp = pt.zeros(shape), pt.zeros(shape), pt.zeros((shape[0], n_probes, shape[1]))
+    r_model, a_model, s_model = [], [], []
 
     # min- / max-values used for normalization
     min_max = {"states": observation["min_max_states"], "cl": observation["min_max_cl"],
@@ -563,24 +602,44 @@ def fill_buffer_from_models(env_model_cl_p: list, env_model_cd: list, episode: i
 
         # for each trajectory sample input states from all available data within the CFD buffer
         traj_no = pt.randint(low=0, high=observation["cd"].size()[1], size=(1, 1)).item()
-        # idx = pt.randint(low=0, high=observation["cd"].size()[0] - n_input - 2, size=(1, 1)).item()
-        idx = 0     # always start at t = 4s, no random sampling of initial states
 
         # then predict the trajectory (the env. models are loaded in predict trajectory function)
         pred, ok = predict_trajectories(env_model_cl_p, env_model_cd, episode, path,
-                                        observation["states"][idx:idx + n_input, :, traj_no],
-                                        observation["cd"][idx:idx + n_input, traj_no],
-                                        observation["cl"][idx:idx + n_input, traj_no],
-                                        observation["actions"][idx:idx + n_input, traj_no],
-                                        observation["alpha"][idx:idx + n_input, traj_no],
-                                        observation["beta"][idx:idx + n_input, traj_no],
+                                        observation["states"][:n_input, :, traj_no],
+                                        observation["cd"][:n_input, traj_no],
+                                        observation["cl"][:n_input, traj_no],
+                                        observation["actions"][:n_input, traj_no],
+                                        observation["alpha"][:n_input, traj_no],
+                                        observation["beta"][:n_input, traj_no],
                                         n_probes, n_input, min_max, len_traj)
 
         # only add trajectory to buffer if the values make sense, otherwise discard it
         if ok[0]:
             predictions.append(pred)
+
+            # compute the uncertainty of the predictions for the rewards wrt the model number
+            for model in range(len(env_model_cl_p)):
+                tmp, _ = predict_trajectories(env_model_cl_p, env_model_cd, episode, path,
+                                              observation["states"][:n_input, :, traj_no],
+                                              observation["cd"][:n_input, traj_no],
+                                              observation["cl"][:n_input, traj_no],
+                                              observation["actions"][:n_input, traj_no],
+                                              observation["alpha"][:n_input, traj_no],
+                                              observation["beta"][:n_input, traj_no],
+                                              n_probes, n_input, min_max, len_traj,
+                                              model_no=model)
+                r_model_tmp[:, model] = tmp["rewards"]
+                a_model_tmp[:, model] = tmp["actions"]
+                s_model_tmp[:, :, model] = tmp["states"]
+
+            # same data structure as required in update-method of PPO-agent
+            r_model.append(r_model_tmp)
+            a_model.append(a_model_tmp)
+            s_model.append(s_model_tmp)
+            
             counter += 1
             failed = 0
+
         else:
             print_trajectory_info(counter, buffer_size, failed, pred, ok[1])
             failed += 1
@@ -590,7 +649,10 @@ def fill_buffer_from_models(env_model_cl_p: list, env_model_cd: list, episode: i
             print(f"could not generate valid trajectories after {max_iter} iterations... going back to CFD")
             counter = buffer_size
 
-    return predictions
+    # compute the policy performance for each model in the current episode
+    policy_loss_model = assess_model_performance(s_model, a_model, r_model, agent)
+
+    return predictions, policy_loss_model
 
 
 def generate_feature_labels(cd, states: pt.Tensor = None, actions: pt.Tensor = None, cl: pt.Tensor = None,
@@ -638,9 +700,9 @@ def generate_feature_labels(cd, states: pt.Tensor = None, actions: pt.Tensor = N
                 cl_tmp = cl[t_idx:t_idx + n_t_input, n].unsqueeze(-1)
                 cd_tmp = cd[t_idx:t_idx + n_t_input, n].unsqueeze(-1)
                 a = actions[t_idx:t_idx + n_t_input, n].unsqueeze(-1)
-                f[t_idx, :] = pt.concat([s, cl_tmp, cd_tmp, a], dim=1).flatten()
-                l[t_idx, :] = pt.concat([states[t_idx + n_t_input, :, n].squeeze(),
-                                         cl[t_idx + n_t_input, n].unsqueeze(-1)], dim=0)
+                f[t_idx, :] = pt.cat([s, cl_tmp, cd_tmp, a], dim=1).flatten()
+                l[t_idx, :] = pt.cat([states[t_idx + n_t_input, :, n].squeeze(),
+                                      cl[t_idx + n_t_input, n].unsqueeze(-1)], dim=0)
         feature.append(f)
         label.append(l)
 
@@ -654,7 +716,8 @@ def wrapper_train_env_model_ensemble(train_path: str, cfd_obs: list, len_traj: i
                                      n_models: int, n_time_steps: int = 30, e_re_train: int = 150,
                                      e_re_train_cd: int = 150, load: bool = False, n_layers_cl_p: int = 3,
                                      n_layers_cd: int = 5, n_neurons_cl_p: int = 100,
-                                     n_neurons_cd: int = 50) -> Tuple[list, list, pt.Tensor, dict]:
+                                     n_neurons_cd: int = 50) -> Tuple[list, list, pt.Tensor, dict] \
+                                                                or Tuple[list, list, list, dict]:
     """
     wrapper function for train the ensemble of environment models
 
@@ -735,8 +798,7 @@ def wrapper_train_env_model_ensemble(train_path: str, cfd_obs: list, len_traj: i
 
     # in case only one model is used, then return the loss of the first model
     if not losses:
-        losses = loss
-        return cl_p_ensemble, cd_ensemble, losses, init_data
+        return cl_p_ensemble, cd_ensemble, loss, init_data
     else:
         return cl_p_ensemble, cd_ensemble, pt.tensor(losses), init_data
 
