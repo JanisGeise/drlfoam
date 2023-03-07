@@ -85,9 +85,9 @@ def main(args):
     # if debug active -> add execution of bashrc to Allrun scripts, because otherwise the path to openFOAM is not set
     if hasattr(args, "debug"):
         args.set_openfoam_bashrc(path=env.path)
-        n_input_time_steps = args.n_input_time_steps
+        env_model = SetupEnvironmentModel(n_input_time_steps=args.n_input_time_steps, path=training_path)
     else:
-        n_input_time_steps = 30
+        env_model = SetupEnvironmentModel(path=training_path)
 
     # create buffer
     if executer == "local":
@@ -127,84 +127,76 @@ def main(args):
     buffer.base_env.start_time = buffer.base_env.end_time
     buffer.base_env.end_time = end_time
     buffer.reset()
-
-    # len_traj = length of the trajectory in [s], assuming constant sample rate of 100 Hz (default value)
-    # NOTE: at Re != 100, the parameter len_traj needs to be adjusted accordingly since the simulation is only run to
-    # the same dimensionless time but here the physical time is required, e.g. 5*int(...) for Re = 500
-    len_traj, obs_cfd, n_models = 1 * int(100 * round(end_time - buffer.base_env.start_time, 1)), [], 5
-    last_cfd, policy_loss = starting_episode, []
+    env_model.last_cfd = starting_episode
 
     # begin training
     start_time = time()
     for e in range(starting_episode, episodes):
         print(f"Start of episode {e}")
-        if e == starting_episode or check_switching(e, last_cfd, pt.tensor(policy_loss[-2:])):
-            # save path of CFD episodes
-            obs_cfd.append("".join([training_path + f"/observations_{e}.pt"]))
+        if e == starting_episode or env_model.determine_switching(e):
+            # save path of current CFD episode
+            env_model.append_cfd_obs(e)
 
-            # set episode for save_trajectory() method, because n_fills is now updated only every CFD episode
+            # update n_fills
             if e != starting_episode:
                 buffer._n_fills = e
 
             buffer.fill()
             states, actions, rewards = buffer.observations
 
+            # set the correct trajectory length
+            env_model.len_traj = actions[0].size()[0]
+
             # in 1st episode: CFD data is used to train environment models for 1st time
             if e == starting_episode:
-                cl_p_models, cd_models, l, obs = wrapper_train_env_model_ensemble(training_path, obs_cfd, len_traj,
-                                                                                  env.n_states, buffer_size, n_models,
-                                                                                  n_time_steps=n_input_time_steps)
+                cl_p_models, cd_models, l, obs = wrapper_train_env_model_ensemble(training_path, env_model.obs_cfd,
+                                                                                  env_model.len_traj, env.n_states,
+                                                                                  buffer_size, env_model.n_models,
+                                                                                  n_time_steps=env_model.t_input)
 
             # ever CFD episode: models are loaded and re-trained based on CFD data of the current & last CFD episode
             else:
-                cl_p_models, cd_models, l, obs = wrapper_train_env_model_ensemble(training_path, obs_cfd, len_traj,
-                                                                                  env.n_states, buffer_size, n_models,
+                cl_p_models, cd_models, l, obs = wrapper_train_env_model_ensemble(training_path, env_model.obs_cfd,
+                                                                                  env_model.len_traj, env.n_states,
+                                                                                  buffer_size, env_model.n_models,
                                                                                   load=True,
-                                                                                  n_time_steps=n_input_time_steps)
+                                                                                  n_time_steps=env_model.t_input)
 
             # save train- and validation losses of the environment models
-            if n_models == 1:
-                losses = {"train_loss_cl_p": l[0][0], "train_loss_cd": l[0][1], "val_loss_cl_p": l[1][0],
-                          "val_loss_cd": l[1][1]}
-                save_trajectories(training_path, e, losses, name="/env_model_loss_")
-            else:
-                losses = {"train_loss_cl_p": l[:, 0, 0, :], "train_loss_cd": l[:, 0, 1, :],
-                          "val_loss_cl_p": l[:, 1, 0, :], "val_loss_cd": l[:, 1, 1, :]}
-                save_trajectories(training_path, e, losses, name="/env_model_loss_")
+            env_model.save_losses(e, l)
 
             # reset buffer, policy loss and set the current episode as last CFD episode
             buffer.reset()
-            last_cfd, policy_loss = e, []
+            env_model.reset(e)
 
         # fill buffer with trajectories generated by the environment models
         else:
             # generate trajectories from initial states using policy from previous episode, fill model buffer with them
             predicted_traj, current_policy_loss = fill_buffer_from_models(cl_p_models, cd_models, e, training_path,
                                                                           observation=obs, n_probes=env.n_states,
-                                                                          n_input=n_input_time_steps, len_traj=len_traj,
+                                                                          n_input=env_model.t_input,
+                                                                          len_traj=env_model.len_traj,
                                                                           buffer_size=buffer_size, agent=agent)
-            policy_loss.append(current_policy_loss)
-
-            # print policy loss for testing purposes
-            print(f"policy loss episode {e}: {current_policy_loss}")
+            env_model.policy_loss.append(current_policy_loss)
 
             # if len(predicted_traj) < buffer size -> discard trajectories from models and go back to CFD
             if len(predicted_traj) < buffer_size:
                 buffer._n_fills = e
                 buffer.fill()
                 states, actions, rewards = buffer.observations
-                obs_cfd.append("".join([training_path + f"/observations_{e}.pt"]))
+                env_model.append_cfd_obs(e)
 
                 # re-train environment models to avoid failed trajectories in the next episode
-                cl_p_models, cd_models, l, obs = wrapper_train_env_model_ensemble(training_path, obs_cfd, len_traj,
-                                                                                  env.n_states, buffer_size, n_models,
+                cl_p_models, cd_models, l, obs = wrapper_train_env_model_ensemble(training_path, env_model.obs_cfd,
+                                                                                  env_model.len_traj, env.n_states,
+                                                                                  buffer_size, env_model.n_models,
                                                                                   load=True, e_re_train=100,
                                                                                   e_re_train_cd=100,
-                                                                                  n_time_steps=n_input_time_steps)
+                                                                                  n_time_steps=env_model.t_input)
 
             else:
-                # save the generated trajectories, for now without model buffer instance
-                save_trajectories(training_path, e, predicted_traj)
+                # save the model-generated trajectories
+                env_model.save(e, predicted_traj)
 
                 # states, actions and rewards required for PPO-training, they are already re-scaled when generated
                 states = [predicted_traj[traj]["states"] for traj in range(buffer_size)]
@@ -271,7 +263,7 @@ class RunTrainingInDebugger:
 
 if __name__ == "__main__":
     # option for running the training in IDE, e.g. in debugger
-    DEBUG = False
+    DEBUG = True
 
     if not DEBUG:
         main(parseArguments())

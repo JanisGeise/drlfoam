@@ -14,6 +14,65 @@ from drlfoam.agent.agent import compute_gae
 from drlfoam.constants import EPS_SP
 
 
+class SetupEnvironmentModel:
+    def __init__(self, n_models: int = 5, n_input_time_steps: int = 30, path: str = ""):
+        self.path = path
+        self.n_models = n_models
+        self.t_input = n_input_time_steps
+        self.obs_cfd = []
+        self.len_traj = 200
+        self.last_cfd = 0
+        self.policy_loss = []
+        self.threshold = 0.6
+
+    def determine_switching(self, current_episode: int):
+        """
+        check if the environment models are still improving the policy or if it should be switched back to CFD in order
+        to update the environment models
+
+        threshold: amount of model which have to improve the policy in order to continue training with models
+
+        :param current_episode: current episode
+        :return: bool if training should be switch back to CFD in order to update the environment models
+        """
+        # in the 1st two MB episodes of training, policy loss has no or just one entry, so diff can't be computed
+        if len(self.policy_loss[-2:]) < 2:
+            switch = 0
+        else:
+            # mask difference of policy loss for each model -> 1 if policy improved, 0 if not
+            diff = ((pt.tensor(self.policy_loss[-1]) - pt.tensor(self.policy_loss[0])) > 0.0).int()
+
+            # if policy for less than x% of the models improves, then switch to CFD -> 0 = no switching, 1 = switch
+            switch = [0 if sum(diff) / len(diff) >= self.threshold else 1][0]
+
+        # we need 2 subsequent MB-episodes after each CFD episode to determine if policy improves in MB-training
+        if (current_episode - self.last_cfd < 2) or switch == 0:
+            return False
+        else:
+            return True
+
+    def append_cfd_obs(self, e):
+        self.obs_cfd.append("".join([self.path, f"/observations_{e}.pt"]))
+
+    def save_losses(self, episode, loss):
+        # save train- and validation losses of the environment models
+        if self.n_models == 1:
+            losses = {"train_loss_cl_p": loss[0][0], "train_loss_cd": loss[0][1], "val_loss_cl_p": loss[1][0],
+                      "val_loss_cd": loss[1][1]}
+            self.save(episode, losses, name="/env_model_loss_")
+        else:
+            losses = {"train_loss_cl_p": loss[:, 0, 0, :], "train_loss_cd": loss[:, 0, 1, :],
+                      "val_loss_cl_p": loss[:, 1, 0, :], "val_loss_cd": loss[:, 1, 1, :]}
+            self.save(episode, losses, name="/env_model_loss_")
+
+    def save(self, episode, data, name: str = "/observations_"):
+        pt.save(data, "".join([self.path, name, f"{episode}.pt"]))
+
+    def reset(self, episode):
+        self.policy_loss = []
+        self.last_cfd = episode
+
+
 class EnvironmentModel(pt.nn.Module):
     def __init__(self, n_inputs: int, n_outputs: int, n_layers: int, n_neurons: int,
                  activation: callable = pt.nn.functional.leaky_relu):
@@ -541,34 +600,6 @@ def assess_model_performance(s_model: list, a_model: list, r_model: list, agent:
     return policy_loss
 
 
-def check_switching(current_episode: int, last_cfd: int, policy_loss: pt.Tensor, threshold: float = 0.6) -> bool:
-    """
-    check if the environment models are still improving the policy or if it should be switched back to CFD in order to
-    update the environment models
-
-    :param current_episode: current episode
-    :param last_cfd: last MF-episode ran in CFD
-    :param policy_loss: policy losses of the current and last MB-episode
-    :param threshold: amount of model which have to improve the policy in order to continue training with models
-    :return: bool if training should be switch back to CFD in order to update the environment models
-    """
-    # in the 1st two MB episodes of training, policy loss has no or just one entry, so diff can't be computed
-    if len(policy_loss) < 2:
-        switch = 0
-    else:
-        # mask difference of policy loss for each model -> 1 if policy improved, 0 if not
-        diff = ((policy_loss[-1] - policy_loss[0]) > 0.0).int()
-
-        # if policy for less than x% of the models improves, then switch to CFD -> 0 = no switching required, 1 = switch
-        switch = [0 if sum(diff)/len(diff) >= threshold else 1][0]
-
-    # we need 2 subsequent MB-episodes after each CFD episode in order to determine if policy improves in MB-training
-    if (current_episode - last_cfd < 2) or switch == 0:
-        return False
-    else:
-        return True
-
-
 def fill_buffer_from_models(env_model_cl_p: list, env_model_cd: list, episode: int, path: str, observation: dict,
                             n_input: int, n_probes: int, buffer_size: int, len_traj: int,
                             agent: PPOAgent) -> Tuple[list, list]:
@@ -801,11 +832,6 @@ def wrapper_train_env_model_ensemble(train_path: str, cfd_obs: list, len_traj: i
         return cl_p_ensemble, cd_ensemble, loss, init_data
     else:
         return cl_p_ensemble, cd_ensemble, pt.tensor(losses), init_data
-
-
-# since no model buffer is implemented at the moment, there is no access to the save_obs() method... so just do it here
-def save_trajectories(path, e, observations, name: str = "/observations_"):
-    pt.save(observations, "".join([path, name, f"{e}.pt"]))
 
 
 if __name__ == "__main__":
