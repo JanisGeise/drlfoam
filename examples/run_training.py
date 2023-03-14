@@ -69,6 +69,8 @@ def main(args):
 
     # ensure reproducibility
     manual_seed(args.seed)
+    if pt.cuda.is_available():
+        pt.cuda.manual_seed_all(args.seed)
 
     # create a directory for training
     makedirs(training_path, exist_ok=True)
