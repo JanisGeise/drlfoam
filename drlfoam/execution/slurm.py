@@ -3,7 +3,7 @@
 See: https://slurm.schedmd.com/documentation.html
 """
 
-from typing import List
+from typing import List, Union
 from os.path import join
 from subprocess import Popen, PIPE
 from time import sleep
@@ -27,8 +27,11 @@ SLURM_NTASKS_PER_NODE = "--ntasks-per-node"
 SLURM_MEM_PER_CPU = "--mem-per-cpu"
 
 
-def submit_job(jobscript: str) -> int:
-    proc = Popen(["sbatch", jobscript], stdout=PIPE)
+def submit_job(jobscript: Union[str, list]) -> int:
+    if type(jobscript) == str:
+        proc = Popen(["sbatch", jobscript], stdout=PIPE)
+    else:
+        proc = Popen(["sbatch"] + jobscript, stdout=PIPE)
     response = str(proc.stdout.read(), "utf-8")
     return int(response.split()[-1])
 
