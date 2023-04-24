@@ -3,12 +3,9 @@
 import sys
 import argparse
 
-from glob import glob
-from time import time
-from os.path import join
 from torch import manual_seed
 from shutil import copytree, rmtree
-from os import makedirs, chdir, environ, system, getcwd
+from os import makedirs, environ, system
 
 BASE_PATH = environ.get("DRL_BASE", "")
 sys.path.insert(0, BASE_PATH)
@@ -19,6 +16,7 @@ from drlfoam.execution import LocalBuffer, SlurmBuffer, SlurmConfig
 
 from examples.get_number_of_probes import get_number_of_probes
 from drlfoam.environment.env_model_rotating_cylinder import *
+from drlfoam.environment.predict_trajectories import fill_buffer_from_models
 
 
 def print_statistics(actions, rewards):
@@ -190,7 +188,8 @@ def main(args):
                                                                           observation=obs, n_probes=env.n_states,
                                                                           n_input=env_model.t_input,
                                                                           len_traj=env_model.len_traj,
-                                                                          buffer_size=buffer_size, agent=agent)
+                                                                          buffer_size=buffer_size, agent=agent,
+                                                                          env=executer)
             env_model.time_mb_episode()
             env_model.policy_loss.append(current_policy_loss)
 
