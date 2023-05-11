@@ -3,7 +3,7 @@
 import sys
 import argparse
 
-from torch import manual_seed
+from torch import manual_seed, cuda
 from shutil import copytree, rmtree
 from os import makedirs, environ, system
 
@@ -67,8 +67,8 @@ def main(args):
 
     # ensure reproducibility
     manual_seed(args.seed)
-    if pt.cuda.is_available():
-        pt.cuda.manual_seed_all(args.seed)
+    if cuda.is_available():
+        cuda.manual_seed_all(args.seed)
 
     # create a directory for training
     makedirs(training_path, exist_ok=True)
@@ -100,9 +100,10 @@ def main(args):
         )
         """
         # for AWS
-        config = SlurmConfig(n_tasks=2, n_nodes=1, partition="c6i", time="00:30:00", modules=["openmpi/4.1.1"],
-                             commands=["source /fsx/OpenFOAM/OpenFOAM-v2206/etc/bashrc",
-                                       "source /fsx/drlfoam/setup-env"])
+        config = SlurmConfig(n_tasks=2, n_nodes=1, partition="queue-1", time="00:30:00", modules=["openmpi/4.1.5"],
+                             constraint = "c5a.24xlarge", commands_pre=["source /fsx/OpenFOAM/OpenFOAM-v2206/etc/bashrc",
+                             "source /fsx/drlfoam/setup-env"], commands=["source /fsx/OpenFOAM/OpenFOAM-v2206/etc/bashrc",
+                             "source /fsx/drlfoam/setup-env"])
         """
         buffer = SlurmBuffer(training_path, env,
                              buffer_size, n_runners, config, timeout=timeout)
@@ -243,7 +244,7 @@ def main(args):
         env_model.start_timer()
         agent.update(states, actions, rewards)
         env_model.time_ppo_update()
-        agent.save_state(join(training_path, f"checkpoint.pt"))
+        agent.save_state(join(training_path, f"checkpoint_{e}.pt"))
         current_policy = agent.trace_policy()
         buffer.update_policy(current_policy)
         current_policy.save(join(training_path, f"policy_trace_{e}.pt"))
