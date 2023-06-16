@@ -7,6 +7,7 @@ from typing import List, Union
 from os.path import join
 from subprocess import Popen, PIPE
 from time import sleep
+import logging
 from .buffer import Buffer
 from ..environment import Environment
 
@@ -59,7 +60,6 @@ def submit_and_wait(jobscript: str, wait: int = 5, timeout: int = 1e15):
             else:
                 running = False
         except Exception as e:
-            print(e)
             running = False
 
 
@@ -117,7 +117,7 @@ class SlurmConfig(object):
             entries.append("")
             entries += all_commands
         else:
-            print(f"Warning: no commands specified in jobscript {path}")
+            logging.warning(f"Warning: no commands specified in jobscript {path}")
 
         with open(path, "w+") as jobscript:
             jobscript.write("\n".join(entries))

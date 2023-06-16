@@ -45,7 +45,6 @@ class FCPolicy(pt.nn.Module):
             for hidden in range(self._n_layers - 1):
                 self._layers.append(pt.nn.Linear(
                     self._n_neurons, self._n_neurons))
-        #self._layers.append(pt.nn.Linear(self._n_neurons, 2*self._n_actions))
         self._last_layer = pt.nn.Linear(self._n_neurons, 2*self._n_actions)
 
     @pt.jit.ignore
@@ -71,7 +70,7 @@ class FCPolicy(pt.nn.Module):
         if len(actions.shape) == 1:
             return log_p.squeeze(), beta.entropy().squeeze()
         else:
-            return log_p, beta.entropy()
+            return log_p.sum(dim=1), beta.entropy().sum(dim=1)
 
 
 class FCValue(pt.nn.Module):

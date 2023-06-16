@@ -24,13 +24,18 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::agentRotatingWallVelocityFvPatchVectorField
+    Foam::pinballRotatingWallVelocityFvPatchVectorField
 
 Group
     grpWallBoundaryConditions grpGenericBoundaryConditions
 
 Description
     This boundary condition provides a rotational velocity condition.
+    The boundary condition was originally implemented by Tom Krogmann
+    during his student project at TU Braunschweig. For more information
+    refer to:
+        GitHub: https://github.com/TomKrogmann/Optimal_Sensor_Placement_for_Active_Flow_Control_in_Deep_Reinforcement_Learning
+        report: https://zenodo.org/record/7636959#.Y-qTLcbMJkg
 
 Usage
     \table
@@ -43,51 +48,57 @@ Usage
     \verbatim
     <patchName>
     {
-        type            agentRotatingWallVelocity;
-        origin          (0 0 0);
+        type            pinballRotatingWallVelocity;
+        origin_a        (1 0 0);
+        origin_b        (0 1 0);
+        origin_c        (0 -1 0);
         axis            (0 0 1);
         policy          "policy.pt"
         seed            0;
         train           true;
-        absOmegaMax     0.05;
+        absOmegaMax     5.0;
     }
     \endverbatim
 
-   
 See also
     Foam::fixedValueFvPatchField
 
 SourceFiles
-    agentRotatingWallVelocityFvPatchVectorField.C
+    pinballRotatingWallVelocityFvPatchVectorField.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef agentRotatingWallVelocityFvPatchVectorField_H
-#define agentRotatingWallVelocityFvPatchVectorField_H
+#ifndef pinballRotatingWallVelocityFvPatchVectorField_H
+#define pinballRotatingWallVelocityFvPatchVectorField_H
 
 #include <torch/script.h>
 #include <random>
 #include "fixedValueFvPatchFields.H"
 #include "probes.H"
 #include "timeControl.H"
-
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
 {
 
 /*---------------------------------------------------------------------------*\
-           Class agentRotatingWallVelocityFvPatchVectorField Declaration
+           Class pinballRotatingWallVelocityFvPatchVectorField Declaration
 \*---------------------------------------------------------------------------*/
 
-class agentRotatingWallVelocityFvPatchVectorField
+class pinballRotatingWallVelocityFvPatchVectorField
 :
     public fixedValueFvPatchVectorField
 {
     // Private data
 
-        //- origin of the rotation
-        vector origin_;
+        //- origin of cylinder a
+        vector origin_a_;
+
+        //- origin of cylinder b
+        vector origin_b_;
+
+        //- origin of cylinder c
+        vector origin_c_;
 
         //- axis of the rotation
         vector axis_;
@@ -98,7 +109,7 @@ class agentRotatingWallVelocityFvPatchVectorField
         //- name of the PyTorch angular velocity model
         word policy_name_;
 
-        //- PyTorch model of angular velocity
+        //- PyTorch model predicting mean and log(std) of angular velocity
         torch::jit::script::Module policy_;
 
         //- largest allowed absolute value of angular velocity
@@ -113,11 +124,23 @@ class agentRotatingWallVelocityFvPatchVectorField
         //- random number generator
         std::mt19937 gen_;
 
-        //- next predicted angular velocity
-        scalar omega_;
+        //- next predicted angular velocity of cylinder a
+        scalar omega_a_;
 
-        //- previously predicted angular velocity
-        scalar omega_old_;
+        //- previously predicted angular velocity of cylinder a
+        scalar omega_old_a_;
+
+        //- next predicted angular velocity of cylinder b
+        scalar omega_b_;
+
+        //- previously predicted angular velocity of cylinder b
+        scalar omega_old_b_;
+
+        //- next predicted angular velocity of cylinder c
+        scalar omega_c_;
+
+        //- previously predicted angular velocity of cylinder c
+        scalar omega_old_c_;
 
         //- last time at which angular velocity was computed
         scalar control_time_;
@@ -137,43 +160,54 @@ class agentRotatingWallVelocityFvPatchVectorField
         //- timeControls consistent with function objects
         Foam::timeControl control_;
 
+        //- lists of face centers, normals, and face IDs
+        DynamicList <vector> centers_a_;
+        DynamicList <vector> centers_b_;
+        DynamicList <vector> centers_c_;
+        DynamicList <vector> normals_a_;
+        DynamicList <vector> normals_b_;
+        DynamicList <vector> normals_c_;
+        DynamicList <label> faces_a_;
+        DynamicList <label> faces_b_;
+        DynamicList <label> faces_c_;
+
 public:
 
     //- Runtime type information
-    TypeName("agentRotatingWallVelocity");
+    TypeName("pinballRotatingWallVelocity");
 
 
     // Constructors
 
         //- Construct from patch and internal field
-        agentRotatingWallVelocityFvPatchVectorField
+        pinballRotatingWallVelocityFvPatchVectorField
         (
             const fvPatch&,
             const DimensionedField<vector, volMesh>&
         );
 
         //- Construct from patch, internal field and dictionary
-        agentRotatingWallVelocityFvPatchVectorField
+        pinballRotatingWallVelocityFvPatchVectorField
         (
             const fvPatch&,
             const DimensionedField<vector, volMesh>&,
             const dictionary&
         );
 
-        //- Construct by mapping given agentRotatingWallVelocityFvPatchVectorField
+        //- Construct by mapping given pinballRotatingWallVelocityFvPatchVectorField
         //  onto a new patch
-        agentRotatingWallVelocityFvPatchVectorField
+        pinballRotatingWallVelocityFvPatchVectorField
         (
-            const agentRotatingWallVelocityFvPatchVectorField&,
+            const pinballRotatingWallVelocityFvPatchVectorField&,
             const fvPatch&,
             const DimensionedField<vector, volMesh>&,
             const fvPatchFieldMapper&
         );
 
         //- Construct as copy
-        agentRotatingWallVelocityFvPatchVectorField
+        pinballRotatingWallVelocityFvPatchVectorField
         (
-            const agentRotatingWallVelocityFvPatchVectorField&
+            const pinballRotatingWallVelocityFvPatchVectorField&
         );
 
         //- Construct and return a clone
@@ -181,14 +215,14 @@ public:
         {
             return tmp<fvPatchVectorField>
             (
-                new agentRotatingWallVelocityFvPatchVectorField(*this)
+                new pinballRotatingWallVelocityFvPatchVectorField(*this)
             );
         }
 
         //- Construct as copy setting internal field reference
-        agentRotatingWallVelocityFvPatchVectorField
+        pinballRotatingWallVelocityFvPatchVectorField
         (
-            const agentRotatingWallVelocityFvPatchVectorField&,
+            const pinballRotatingWallVelocityFvPatchVectorField&,
             const DimensionedField<vector, volMesh>&
         );
 
@@ -200,7 +234,7 @@ public:
         {
             return tmp<fvPatchVectorField>
             (
-                new agentRotatingWallVelocityFvPatchVectorField(*this, iF)
+                new pinballRotatingWallVelocityFvPatchVectorField(*this, iF)
             );
         }
 
@@ -215,7 +249,7 @@ public:
         virtual void write(Ostream&) const;
 
         //- Save trajectory to file
-        void saveTrajectory(scalar alpha, scalar beta) const;
+        void saveTrajectory(scalar alpha_a, scalar beta_a, scalar alpha_b, scalar beta_b, scalar alpha_c, scalar beta_c) const;
 
         //- Get probes function object dictionary
         const Foam::dictionary& getProbesDict();
@@ -226,6 +260,8 @@ public:
         //- initialize control
         Foam::timeControl initializeControl();
 
+        //- determine attribution of patch faces to cylinders a/b/c
+        void initializeCylinderSegmentation();
 };
 
 
