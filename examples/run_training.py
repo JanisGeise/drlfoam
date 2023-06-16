@@ -323,6 +323,7 @@ class RunTrainingInDebugger:
         self.seed = seed
         self.timeout = timeout
         self.checkpoint = ""
+        self.simulation = "rotatingCylinder2D"
 
     def set_openfoam_bashrc(self, path: str):
         system(f"sed -i '5i # source bashrc for openFOAM for debugging purposes\\n{self.command}' {path}/Allrun.pre")
@@ -331,7 +332,7 @@ class RunTrainingInDebugger:
 
 if __name__ == "__main__":
     # option for running the training in IDE, e.g. in debugger
-    DEBUG = False
+    DEBUG = True
 
     if not DEBUG:
         main(parseArguments())
