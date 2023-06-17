@@ -242,7 +242,7 @@ def main(args):
                                                                           n_input=env_model.t_input,
                                                                           len_traj=env_model.len_traj,
                                                                           buffer_size=buffer_size, agent=agent,
-                                                                          env=executer, seed=args.seed,
+                                                                          env=executer, seed=args.manualSeed,
                                                                           n_actions=env.n_actions)
             env_model.time_mb_episode()
             env_model.policy_loss.append(current_policy_loss)
@@ -328,8 +328,8 @@ class RunTrainingInDebugger:
         self.manualSeed = seed
         self.timeout = timeout
         self.checkpoint = ""
-        # self.simulation = "rotatingCylinder2D"
-        self.simulation = "rotatingPinball2D"
+        self.simulation = "rotatingCylinder2D"
+        # self.simulation = "rotatingPinball2D"
 
     def set_openfoam_bashrc(self, path: str):
         system(f"sed -i '5i # source bashrc for openFOAM for debugging purposes\\n{self.command}' {path}/Allrun.pre")
@@ -338,7 +338,7 @@ class RunTrainingInDebugger:
 
 if __name__ == "__main__":
     # option for running the training in IDE, e.g. in debugger
-    DEBUG = False
+    DEBUG = True
 
     if not DEBUG:
         main(parseArguments())
@@ -361,10 +361,10 @@ if __name__ == "__main__":
         chdir(BASE_PATH)
 
         # test MB-DRL on local machine for cylinder2D: base case runs until t = 4s
-        # d_args = RunTrainingInDebugger(episodes=50, runners=4, buffer=4, finish=6, n_input_time_steps=30, seed=0)
+        d_args = RunTrainingInDebugger(episodes=50, runners=4, buffer=4, finish=5, n_input_time_steps=30, seed=0)
 
         # for pinball: base case runs until t = 200s
-        d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, finish=225, n_input_time_steps=30, seed=0)
+        # d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, finish=220, n_input_time_steps=30, seed=0)
 
         # run PPO training
         main(d_args)
