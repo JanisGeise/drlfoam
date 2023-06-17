@@ -108,9 +108,9 @@ def main(args):
     simulation = args.simulation
 
     # ensure reproducibility
-    manual_seed(args.seed)
+    manual_seed(args.manualSeed)
     if cuda.is_available():
-        cuda.manual_seed_all(args.seed)
+        cuda.manual_seed_all(args.manualSeed)
 
     # check if the user-specified finish time is greater than the end time of the base case (required for training)
     check_finish_time(BASE_PATH, end_time, simulation)
@@ -144,13 +144,13 @@ def main(args):
         # Typical Slurm configs for TU Braunschweig cluster
         config = SlurmConfig(
             n_tasks=env.mpi_ranks, n_nodes=1, partition="queue-1", time="03:00:00",
-            constraint="c5a.24xlarge", modules=["openmpi/4.1.5"],
+            constraint="c5a.24xlarge", modules=["openmpi/4.1.5"], job_name="drl_train",
             commands_pre=["source /fsx/OpenFOAM/OpenFOAM-v2206/etc/bashrc", "source /fsx/drlfoam_main/setup-env"]
         )
         """
         # for AWS
         config = SlurmConfig(n_tasks=env.mpi_ranks, n_nodes=1, partition="queue-1", time="03:00:00",
-                             modules=["openmpi/4.1.5"], constraint = "c5a.24xlarge",
+                             modules=["openmpi/4.1.5"], constraint = "c5a.24xlarge", job_name="drl_train",
                              commands_pre=["source /fsx/OpenFOAM/OpenFOAM-v2206/etc/bashrc",
                              "source /fsx/drlfoam/setup-env"], commands=["source /fsx/OpenFOAM/OpenFOAM-v2206/etc/bashrc",
                              "source /fsx/drlfoam/setup-env"])
@@ -325,7 +325,7 @@ class RunTrainingInDebugger:
         self.environment = "local"
         self.debug = True
         self.n_input_time_steps = n_input_time_steps
-        self.seed = seed
+        self.manualSeed = seed
         self.timeout = timeout
         self.checkpoint = ""
         # self.simulation = "rotatingCylinder2D"
