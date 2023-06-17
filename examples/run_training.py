@@ -338,7 +338,7 @@ class RunTrainingInDebugger:
 
 if __name__ == "__main__":
     # option for running the training in IDE, e.g. in debugger
-    DEBUG = True
+    DEBUG = False
 
     if not DEBUG:
         main(parseArguments())

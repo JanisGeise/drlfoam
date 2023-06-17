@@ -200,7 +200,7 @@ def execute_prediction_slurm(pred_id: int, no: int, train_path: str = "examples/
         a_model = pt.zeros(shape)
     else:
         a_model = pt.zeros((shape[0], settings["n_actions"], shape[1]))
-    r_model, s_model = pt.zeros((shape[0], settings["n_probes"], shape[1])), pt.zeros(shape)
+    r_model, s_model = pt.zeros(shape), pt.zeros((shape[0], settings["n_probes"], shape[1]))
 
     pred, ok = predict_trajectories(settings["env_model"], settings["episode"], train_path,
                                     trajectories["states"][:, no, :], trajectories["cd"][:, no, :],
