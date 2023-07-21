@@ -40,9 +40,7 @@ DEFAULT_CONFIG = {
             "n_layers": 2,
             "n_neurons": 64,
             "activation": pt.nn.functional.relu
-        },
-        "policy_lr": 1.0e-4,
-        "value_lr": 1.0e-4
+        }
     },
     "rotatingPinball2D" : {
         "policy_dict" : {
