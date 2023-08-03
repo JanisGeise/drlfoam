@@ -1,19 +1,20 @@
 """ Example training script.
 """
-
-import argparse
-from shutil import copytree
-from os.path import join, exists
-from os import makedirs
 import sys
-from os import environ
 from time import time
 import logging
+import argparse
+
+from torch import manual_seed, cuda
+from shutil import copytree, rmtree
+from os import makedirs, environ, system, chdir
+from os.path import join, exists
+
 BASE_PATH = environ.get("DRL_BASE", "")
 sys.path.insert(0, BASE_PATH)
 
 import torch as pt
-from drlfoam.environment import RotatingCylinder2D, RotatingPinball2D
+from drlfoam.environment import RotatingCylinder2D
 from drlfoam.agent import PPOAgent
 from drlfoam.execution import LocalBuffer, SlurmBuffer, SlurmConfig
 
@@ -22,8 +23,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 SIMULATION_ENVIRONMENTS = {
-    "rotatingCylinder2D" : RotatingCylinder2D,
-    "rotatingPinball2D" : RotatingPinball2D
+    "rotatingCylinder2D" : RotatingCylinder2D
 }
 
 DEFAULT_CONFIG = {
@@ -38,20 +38,6 @@ DEFAULT_CONFIG = {
             "n_neurons": 64,
             "activation": pt.nn.functional.relu
         }
-    },
-    "rotatingPinball2D" : {
-        "policy_dict" : {
-            "n_layers": 2,
-            "n_neurons": 512,
-            "activation": pt.nn.functional.relu
-        },
-        "value_dict" : {
-            "n_layers": 2,
-            "n_neurons": 512,
-            "activation": pt.nn.functional.relu
-        },
-        "policy_lr" : 4.0e-4,
-        "value_lr" : 4.0e-4
     }
 }
 
@@ -82,6 +68,8 @@ def parseArguments():
                     help="End time of the simulations.")
     ag.add_argument("-t", "--timeout", required=False, default=1e15, type=int,
                     help="Maximum allowed runtime of a single simulation in seconds.")
+    ag.add_argument("-m", "--manualSeed", required=False, default=0, type=int,
+                    help="seed value for torch")
     ag.add_argument("-c", "--checkpoint", required=False, default="", type=str,
                     help="Load training state from checkpoint file.")
     ag.add_argument("-s", "--simulation", required=False, default="rotatingCylinder2D", type=str,
@@ -102,20 +90,29 @@ def main(args):
     checkpoint_file = args.checkpoint
     simulation = args.simulation
 
+    # ensure reproducibility
+    manual_seed(args.manualSeed)
+    if cuda.is_available():
+        cuda.manual_seed_all(args.manualSeed)
+
     # create a directory for training
     makedirs(training_path, exist_ok=True)
 
     # make a copy of the base environment
     if not simulation in SIMULATION_ENVIRONMENTS.keys():
         msg = (f"Unknown simulation environment {simulation}" +
-              "Available options are:\n\n" +
-              "\n".join(SIMULATION_ENVIRONMENTS.keys()) + "\n")
+               "Available options are:\n\n" +
+               "\n".join(SIMULATION_ENVIRONMENTS.keys()) + "\n")
         raise ValueError(msg)
     if not exists(join(training_path, "base")):
         copytree(join(BASE_PATH, "openfoam", "test_cases", simulation),
-                join(training_path, "base"), dirs_exist_ok=True)
+                 join(training_path, "base"), dirs_exist_ok=True)
     env = SIMULATION_ENVIRONMENTS[simulation]()
     env.path = join(training_path, "base")
+
+    # if debug active -> add execution of bashrc to Allrun scripts, because otherwise the path to openFOAM is not set
+    if hasattr(args, "debug"):
+        args.set_openfoam_bashrc(path=env.path)
 
     # create buffer
     if executer == "local":
@@ -123,10 +120,17 @@ def main(args):
     elif executer == "slurm":
         # Typical Slurm configs for TU Braunschweig cluster
         config = SlurmConfig(
-            n_tasks=env.mpi_ranks, n_nodes=1, partition="queue-1", time="03:00:00",
-            constraint="c5a.24xlarge", modules=["openmpi/4.1.5"],
-            commands_pre=["source /fsx/OpenFOAM/OpenFOAM-v2206/etc/bashrc", "source /fsx/drlfoam_main/setup-env"]
+            n_tasks=env.mpi_ranks, n_nodes=1, partition="standard", time="03:00:00",
+            modules=["singularity/latest", "mpi/openmpi/4.1.1/gcc"], job_name="drl_train"
         )
+        """
+        # for AWS
+        config = SlurmConfig(n_tasks=env.mpi_ranks, n_nodes=1, partition="queue-1", time="03:00:00",
+                             modules=["openmpi/4.1.5"], constraint = "c5a.24xlarge", job_name="drl_train",
+                             commands_pre=["source /fsx/OpenFOAM/OpenFOAM-v2206/etc/bashrc",
+                             "source /fsx/drlfoam/setup-env"], commands=["source /fsx/OpenFOAM/OpenFOAM-v2206/etc/bashrc",
+                             "source /fsx/drlfoam/setup-env"])
+        """
         buffer = SlurmBuffer(training_path, env,
                              buffer_size, n_runners, config, timeout=timeout)
     else:
@@ -168,5 +172,59 @@ def main(args):
     logging.info(f"Training time (s): {time() - start_time}")
 
 
+class RunTrainingInDebugger:
+    """
+    class for providing arguments when running script in IDE (e.g. for debugging). The ~/.bashrc is not executed when
+    not running the training from terminal, therefore the environment variables need to be set manually in the Allrun
+    scripts
+    """
+
+    def __init__(self, episodes: int = 2, runners: int = 2, buffer: int = 2, finish: float = 5.0,
+                 seed: int = 0, timeout: int = 1e15, out_dir: str = "examples/TEST"):
+        self.command = ". /usr/lib/openfoam/openfoam2206/etc/bashrc"
+        self.output = out_dir
+        self.iter = episodes
+        self.runners = runners
+        self.buffer = buffer
+        self.finish = finish
+        self.environment = "local"
+        self.debug = True
+        self.manualSeed = seed
+        self.timeout = timeout
+        self.checkpoint = ""
+        self.simulation = "rotatingCylinder2D"
+
+    def set_openfoam_bashrc(self, path: str):
+        system(f"sed -i '5i # source bashrc for openFOAM for debugging purposes\\n{self.command}' {path}/Allrun.pre")
+        system(f"sed -i '4i # source bashrc for openFOAM for debugging purposes\\n{self.command}' {path}/Allrun")
+
+
 if __name__ == "__main__":
-    main(parseArguments())
+    # option for running the training in IDE, e.g. in debugger
+    DEBUG = True
+
+    if not DEBUG:
+        main(parseArguments())
+        exit(0)
+
+    else:
+        # for debugging purposes, set environment variables for the current directory
+        environ["DRL_BASE"] = "/home/janis/Hiwi_ISM/results_drlfoam_MB/drlfoam/"
+        environ["DRL_TORCH"] = "".join([environ["DRL_BASE"], "libtorch/"])
+        environ["DRL_LIBBIN"] = "".join([environ["DRL_BASE"], "/openfoam/libs/"])
+        sys.path.insert(0, environ["DRL_BASE"])
+        sys.path.insert(0, environ["DRL_TORCH"])
+        sys.path.insert(0, environ["DRL_LIBBIN"])
+
+        # set paths to openfoam
+        BASE_PATH = environ.get("DRL_BASE", "")
+        sys.path.insert(0, BASE_PATH)
+        environ["WM_PROJECT_DIR"] = "/usr/lib/openfoam/openfoam2206"
+        sys.path.insert(0, environ["WM_PROJECT_DIR"])
+        chdir(BASE_PATH)
+
+        # test MB-DRL on local machine for cylinder2D: base case runs until t = 4s
+        d_args = RunTrainingInDebugger(episodes=20, runners=4, buffer=4, finish=5, seed=0)
+
+        # run PPO training
+        main(d_args)
