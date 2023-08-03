@@ -15,8 +15,6 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-libs ("${DRL_LIBBIN}/libAgentRotatingWallVelocity.so");
-
 application     pimpleFoam;
 
 startFrom       latestTime;
@@ -25,15 +23,15 @@ startTime       0;
 
 stopAt          endTime;
 
-endTime         4.0;
+endTime         0.8;
 
-deltaT          5.0e-4;
+deltaT          5.0e-5;
 
 writeControl    runTime;
 
-writeInterval   1.0;
+writeInterval   0.1;
 
-purgeWrite      1;
+purgeWrite      0;
 
 writeFormat     ascii;
 
@@ -43,58 +41,70 @@ timeFormat      general;
 
 timePrecision   8;
 
-runTimeModifiable false;
+runTimeModifiable true;
+
 
 functions
 {
+    // function object for computing the states and actions in order to predict the solver settings for GAMG
+    residuals
+        {
+            type            agentSolverSettings;
+            libs            ("${DRL_LIBBIN}/libAgentSolverSettings.so");
+            writeControl    writeTime;
+            writeInterval   1;
+            fields          (p);
+            policy          "policy.pt";
+            train           true;
+            seed            0;
+    }
+
+    // log the execution time per time step for reward function
+    time
+    {
+        type            timeInfo;
+        libs            (utilityFunctionObjects);
+        writeControl    timeStep;
+        writeInterval   1;
+        perTimeStep     yes;
+    }
+
     forces
     {
         type            forceCoeffs;
         libs            (forces);
-        executeControl  runTime;
-        executeInterval 0.01;
-        writeControl    runTime;
-        writeInterval   0.01;
-        timeStart       4.0;
+        writeControl    timeStep;
+        writeInterval   1;
         log false;
+
         patches
         (
             cylinder
         );
-        coefficients    (Cd Cl);
-        rhoInf          1;
-        rho             rhoInf;
-        CofR            (0.2 0.2 0.005);
-        liftDir         (0 1 0);
-        dragDir         (1 0 0);
-        magUInf         1.0;
-        lRef            0.1;
-        Aref            0.001;
+
+        rhoInf      1;
+        rho         rhoInf;
+
+        CofR        (0.2 0.2 0.005);
+        liftDir     (0 1 0);
+        dragDir     (1 0 0);
+        //pitchAxis   (0 0 1);
+        magUInf     1.0;
+        lRef        0.1;
+        Aref        0.001;
     }
 
     probes
-    {
-        type            probes;
-        libs            (sampling);
-
-        // Name of the directory for probe data
-        name            probes;
-
-        // Write at same frequency as fields
-        executeControl  runTime;
-        executeInterval 0.01;
-        writeControl    runTime;
-        writeInterval   0.01;
-        timeStart       4.0;
-
-        // Fields to be probed
-        fields          (p);
-
-        // Optional: do not recalculate cells if mesh moves
-        fixedLocations  true;
-
-        // Optional: interpolation scheme to use (default is cell)
-        interpolationScheme cell;
+        {
+            type            probes;
+            libs            (sampling);
+            name            probes;
+            writeControl    timeStep;
+            writeInterval   1;
+            startTime       0.0;
+            fields          (p);
+            fixedLocations  true;
+            interpolationScheme cell;
 
         probeLocations
         (
@@ -111,9 +121,6 @@ functions
             (0.6 0.2 0.005)
             (0.6 0.25 0.005)
         );
-
-        // Optional: filter out points that haven't been found. Default
-        //           is to include them (with value -VGREAT)
         includeOutOfBounds  false;
     }
 

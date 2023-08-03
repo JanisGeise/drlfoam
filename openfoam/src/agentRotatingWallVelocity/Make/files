@@ -1,2 +1,0 @@
-agentRotatingWallVelocityFvPatchVectorField.C
-LIB = $(DRL_LIBBIN)/libAgentRotatingWallVelocity

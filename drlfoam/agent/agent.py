@@ -43,34 +43,25 @@ class FCPolicy(pt.nn.Module):
         self._layers.append(pt.nn.Linear(self._n_states, self._n_neurons))
         if self._n_layers > 1:
             for hidden in range(self._n_layers - 1):
-                self._layers.append(pt.nn.Linear(
-                    self._n_neurons, self._n_neurons))
-        self._last_layer = pt.nn.Linear(self._n_neurons, 2*self._n_actions)
+                self._layers.append(pt.nn.Linear(self._n_neurons, self._n_neurons))
+                self._layers.append(pt.nn.LayerNorm(self._n_neurons))
+        self._last_layer = pt.nn.Linear(self._n_neurons, self._n_actions)
+
+    def forward(self, x: pt.Tensor) -> pt.Tensor:
+        for layer in self._layers:
+            x = self._activation(layer(x))
+
+        # we want to output a probability between [0, 1]
+        return pt.nn.functional.softplus(self._last_layer(x))
 
     @pt.jit.ignore
     def _scale(self, actions: pt.Tensor) -> pt.Tensor:
         return (actions - self._action_min) / (self._action_max - self._action_min)
 
-    def forward(self, x: pt.Tensor) -> pt.Tensor:
-        for layer in self._layers:
-            x = self._activation(layer(x))
-        return 1.0 + pt.nn.functional.softplus(self._last_layer(x))
-
     @pt.jit.ignore
-    def predict(self, states: pt.Tensor, actions: pt.Tensor) -> pt.Tensor:
+    def predict(self, states: pt.Tensor) -> pt.Tensor:
         out = self.forward(states)
-        c0 = out[:, :self._n_actions]
-        c1 = out[:, self._n_actions:]
-        beta = pt.distributions.Beta(c0, c1)
-        if len(actions.shape) == 1:
-            scaled_actions = self._scale(actions.unsqueeze(-1))
-        else:
-            scaled_actions = self._scale(actions)
-        log_p = beta.log_prob(scaled_actions)
-        if len(actions.shape) == 1:
-            return log_p.squeeze(), beta.entropy().squeeze()
-        else:
-            return log_p.sum(dim=1), beta.entropy().sum(dim=1)
+        return out
 
 
 class FCValue(pt.nn.Module):

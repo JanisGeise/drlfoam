@@ -1,9 +1,14 @@
 #!/bin/bash
 cd "${0%/*}" || exit
-. ${DRL_BASE:?}/openfoam/RunFunctions
+. ${DRL_BASE}/RunFunctions        # run functions
 #------------------------------------------------------------------------------
 
 cleanCase
-rm -rf 0 trajectory.csv
+rm -r 0
 
+# remove computed cell centers
+rm constant/C*
+rm constant/V
+
+rm *.txt
 #------------------------------------------------------------------------------
