@@ -43,7 +43,7 @@ class GAMGSolverSettings(Environment):
     def __init__(self, r1: float = 2.0, r2: float = 1.0):
         super(GAMGSolverSettings, self).__init__(
             join(TESTCASE_PATH, "cylinder2D"), "Allrun.pre",
-            "Allrun", "Allclean", mpi_ranks=2, n_states=7, n_actions=1
+            "Allrun", "Allclean", mpi_ranks=4, n_states=7, n_actions=1
         )
         self._r1 = r1
         self._r2 = r2
@@ -198,10 +198,8 @@ class GAMGSolverSettings(Environment):
         post = join(self.path, "postProcessing")
         if isdir(post):
             rmtree(post)
-        # times = get_time_folders(join(self.path, "processor0"))
-        times = get_time_folders(join(self.path))
+        times = get_time_folders(join(self.path, "processor0"))
         times = [t for t in times if float(t) > self.start_time]
-        # for p in glob(join(self.path, "processor*")):
-        for p in glob(join(self.path)):
+        for p in glob(join(self.path, "processor*")):
             for t in times:
                 rmtree(join(p, t))
