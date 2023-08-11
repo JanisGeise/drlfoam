@@ -2,15 +2,15 @@
 from os.path import join, exists
 from shutil import copytree, rmtree
 from pytest import raises, fixture
-from ..rotating_cylinder import (RotatingCylinder2D, _parse_forces,
-                                 _parse_trajectory, _parse_probes)
+from ..env_solver_settings import (RotatingCylinder2D, _parse_forces,
+                                   _parse_trajectory, _parse_probes)
 from ...constants import TESTDATA_PATH
 from ...utils import fetch_line_from_file
 
 
 @fixture()
 def temp_case():
-    case = "rotatingCylinder2D"
+    case = "cylinder2D"
     source = join(TESTDATA_PATH, case)
     dest = join("/tmp", case)
     yield copytree(source, dest, dirs_exist_ok=True)

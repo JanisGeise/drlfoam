@@ -50,18 +50,23 @@ class FCPolicy(pt.nn.Module):
     def forward(self, x: pt.Tensor) -> pt.Tensor:
         for layer in self._layers:
             x = self._activation(layer(x))
-
-        # we want to output a probability between [0, 1]
-        return pt.nn.functional.softplus(self._last_layer(x))
+        # map to intervall [0, 1] since we want to output a binary probability
+        return pt.sigmoid(self._last_layer(x))
 
     @pt.jit.ignore
     def _scale(self, actions: pt.Tensor) -> pt.Tensor:
         return (actions - self._action_min) / (self._action_max - self._action_min)
 
     @pt.jit.ignore
-    def predict(self, states: pt.Tensor) -> pt.Tensor:
+    def predict(self, states: pt.Tensor, actions: pt.Tensor) -> pt.Tensor:
         out = self.forward(states)
-        return out
+        distr = pt.distributions.Bernoulli(out)
+
+        log_p = distr.log_prob(actions.unsqueeze(-1))
+        if len(actions.shape) == 1:
+            return log_p.squeeze(), distr.entropy().squeeze()
+        else:
+            return log_p.sum(dim=1), distr.entropy().sum(dim=1)
 
 
 class FCValue(pt.nn.Module):

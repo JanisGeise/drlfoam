@@ -10,6 +10,6 @@ import torch as pt
 from drlfoam.agent import FCPolicy
 
 
-policy = FCPolicy(7, 1, 0, 1)
+policy = FCPolicy(n_states=7, n_actions=1, action_min=pt.zeros(1,), action_max=pt.ones(1,))
 script = pt.jit.script(policy)
-script.save(join("..", "openfoam", "test_cases", "rotatingCylinder2D", "policy.pt"))
+script.save(join("..", "openfoam", "test_cases", "cylinder2D", "policy.pt"))

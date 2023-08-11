@@ -25,7 +25,7 @@ boundaryField
     inlet
     {
         type            fixedValue;
-        value           uniform (1 0 0);
+        value           uniform (10 0 0);
     }
 
     outlet
@@ -33,22 +33,7 @@ boundaryField
         type            zeroGradient;
     }
 
-    cylinder
-    {
-        type            agentRotatingWallVelocity;
-        origin          (0.2 0.2 0.0);
-        axis            (0 0 1);
-        policy          "policy.pt";
-        probesDict      "probes";
-        startTime       4.0;
-        interval        20;
-        train           true;
-        seed            0;
-        absOmegaMax     5.0;
-        value           uniform (0 0 0);
-    }
-
-    "(top|bottom)"
+    "(cylinder|top|bottom)"
     {
         type            noSlip;
     }

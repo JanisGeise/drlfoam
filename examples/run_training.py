@@ -14,7 +14,7 @@ BASE_PATH = environ.get("DRL_BASE", "")
 sys.path.insert(0, BASE_PATH)
 
 import torch as pt
-from drlfoam.environment import RotatingCylinder2D
+from drlfoam.environment import GAMGSolverSettings
 from drlfoam.agent import PPOAgent
 from drlfoam.execution import LocalBuffer, SlurmBuffer, SlurmConfig
 
@@ -23,17 +23,17 @@ logging.basicConfig(level=logging.INFO)
 
 
 SIMULATION_ENVIRONMENTS = {
-    "rotatingCylinder2D" : RotatingCylinder2D
+    "cylinder2D": GAMGSolverSettings
 }
 
 DEFAULT_CONFIG = {
-    "rotatingCylinder2D" : {
-        "policy_dict" : {
+    "cylinder2D": {
+        "policy_dict": {
             "n_layers": 2,
             "n_neurons": 64,
             "activation": pt.nn.functional.relu
         },
-        "value_dict" : {
+        "value_dict": {
             "n_layers": 2,
             "n_neurons": 64,
             "activation": pt.nn.functional.relu
@@ -72,7 +72,7 @@ def parseArguments():
                     help="seed value for torch")
     ag.add_argument("-c", "--checkpoint", required=False, default="", type=str,
                     help="Load training state from checkpoint file.")
-    ag.add_argument("-s", "--simulation", required=False, default="rotatingCylinder2D", type=str,
+    ag.add_argument("-s", "--simulation", required=False, default="cylinder2D", type=str,
                     help="Select the simulation environment.")
     args = ag.parse_args()
     return args
@@ -138,7 +138,7 @@ def main(args):
             f"Unknown executer {executer}; available options are 'local' and 'slurm'.")
 
     # create PPO agent
-    agent = PPOAgent(env.n_states, env.n_actions, -env.action_bounds, env.action_bounds,
+    agent = PPOAgent(env.n_states, env.n_actions, env.action_bounds[0], env.action_bounds[1],
                      **DEFAULT_CONFIG[simulation])
 
     # load checkpoint if provided
@@ -149,9 +149,13 @@ def main(args):
         buffer._n_fills = starting_episode
     else:
         starting_episode = 0
+        # for testing purposes run base case only up to 0.001s
+        buffer.base_env.end_time = 0.001
         buffer.prepare()
 
-    buffer.base_env.start_time = buffer.base_env.end_time
+    # always start at t = 0s (will be replaced later with sampling from base case),
+    # TODO: make sure reward fct isn't influenced by sampling
+    buffer.base_env.start_time = 0
     buffer.base_env.end_time = end_time
     buffer.reset()
 
@@ -192,7 +196,7 @@ class RunTrainingInDebugger:
         self.manualSeed = seed
         self.timeout = timeout
         self.checkpoint = ""
-        self.simulation = "rotatingCylinder2D"
+        self.simulation = "cylinder2D"
 
     def set_openfoam_bashrc(self, path: str):
         system(f"sed -i '5i # source bashrc for openFOAM for debugging purposes\\n{self.command}' {path}/Allrun.pre")
@@ -201,7 +205,7 @@ class RunTrainingInDebugger:
 
 if __name__ == "__main__":
     # option for running the training in IDE, e.g. in debugger
-    DEBUG = True
+    DEBUG = False
 
     if not DEBUG:
         main(parseArguments())
@@ -223,8 +227,8 @@ if __name__ == "__main__":
         sys.path.insert(0, environ["WM_PROJECT_DIR"])
         chdir(BASE_PATH)
 
-        # test MB-DRL on local machine for cylinder2D: base case runs until t = 4s
-        d_args = RunTrainingInDebugger(episodes=20, runners=4, buffer=4, finish=5, seed=0)
+        # test MB-DRL on local machine for cylinder2D
+        d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, finish=0.05, seed=0)
 
         # run PPO training
         main(d_args)

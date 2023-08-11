@@ -15,7 +15,7 @@ from ...constants import TESTDATA_PATH, TESTCASE_PATH
 def temp_training():
     training = join("/tmp", "test_training")
     makedirs(training, exist_ok=True)
-    case = "rotatingCylinder2D"
+    case = "cylinder2D"
     source = join(TESTCASE_PATH, case)
     dest = join(training, case)
     copytree(source, dest, dirs_exist_ok=True)

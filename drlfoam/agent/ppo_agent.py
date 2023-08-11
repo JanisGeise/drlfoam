@@ -76,6 +76,9 @@ class PPOAgent(Agent):
         values = [self._value(s).detach() for s in states]
         # compute log_p for all but the final experience tuple
         log_p_old = pt.cat([self._policy.predict(s[:-1], a[:-1])[0].detach() for s, a in zip(states, actions)])
+
+        # TODO: states & actions @ t = t_i correspond to rewards @ t = t_i + 2, because OF reads in file prior
+        #       executing function object, so the modified fvSolution is read in one time step later
         returns = pt.cat([compute_returns(r, self._gamma) for r in rewards])
         gaes = pt.cat([compute_gae(r, v, self._gamma, self._lam) for r, v in zip(rewards, values)])
         gaes = (gaes - gaes.mean()) / (gaes.std() + EPS_SP)
@@ -88,13 +91,11 @@ class PPOAgent(Agent):
         # policy update
         p_loss_, e_loss_, kl_ = [], [], []
         for e in range(self._policy_epochs):
-
             # compute loss and update weights
             log_p_new, entropy = self._policy.predict(states_wf, actions_wf)
             p_ratio = (log_p_new - log_p_old).exp()
             policy_objective = gaes * p_ratio
-            policy_objective_clipped = gaes * \
-                p_ratio.clamp(1.0 - self._policy_clip, 1.0 + self._policy_clip)
+            policy_objective_clipped = gaes * p_ratio.clamp(1.0 - self._policy_clip, 1.0 + self._policy_clip)
             policy_loss = -pt.min(policy_objective, policy_objective_clipped).mean()
             entropy_loss = -entropy.mean() * self._entropy_weight
             self._policy_optimizer.zero_grad()
@@ -118,9 +119,7 @@ class PPOAgent(Agent):
         for e in range(self._value_epochs):
             # compute loss and update weights
             values_new = self._value(pt.cat(states))
-            values_new_clipped = values + (values_new - values).clamp(
-                -self._value_clip, self._value_clip
-            )
+            values_new_clipped = values + (values_new - values).clamp(-self._value_clip, self._value_clip)
             v_loss = (returns - values_new).pow(2)
             v_loss_clipped = (returns - values_new_clipped).pow(2)
             value_loss = pt.max(v_loss, v_loss_clipped).mul(0.5).mean()
