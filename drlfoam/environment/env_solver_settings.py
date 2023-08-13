@@ -27,7 +27,7 @@ def _parse_cpu_times(path: str) -> DataFrame:
 
 
 def _parse_residuals(path: str) -> DataFrame:
-    names = ["p_initial", "p_rate_abs", "p_rate_max", "p_rate_min", "p_sum_iters", "p_max_iters", "p_pimple_iters"]
+    names = ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min", "p_sum_iters", "p_max_iters", "p_pimple_iters"]
     residuals = read_csv(path, sep="\t", comment="#", header=None, names=names, usecols=range(2, 9))
 
     return residuals
@@ -188,7 +188,7 @@ class GAMGSolverSettings(Environment):
             residuals = _parse_residuals(residuals_path)
 
             # convert the convergence rates etc. to log (compare to agentSolverSettings.C, predictSettings())
-            for name in ["p_initial", "p_rate_abs", "p_rate_max", "p_rate_min"]:
+            for name in ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min"]:
                 residuals[name] = np.abs(np.log(residuals[name]))
 
             obs["states"] = pt.from_numpy(residuals[residuals.keys()].values)
