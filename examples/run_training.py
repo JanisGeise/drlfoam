@@ -23,11 +23,24 @@ logging.basicConfig(level=logging.INFO)
 
 
 SIMULATION_ENVIRONMENTS = {
-    "cylinder2D": GAMGSolverSettings
+    "cylinder2D": GAMGSolverSettings,
+    "weirOverflow": GAMGSolverSettings
 }
 
 DEFAULT_CONFIG = {
     "cylinder2D": {
+        "policy_dict": {
+            "n_layers": 2,
+            "n_neurons": 64,
+            "activation": pt.nn.functional.relu
+        },
+        "value_dict": {
+            "n_layers": 2,
+            "n_neurons": 64,
+            "activation": pt.nn.functional.relu
+        }
+    },
+    "weirOverflow": {
         "policy_dict": {
             "n_layers": 2,
             "n_neurons": 64,
@@ -119,8 +132,12 @@ def main(args):
         buffer = LocalBuffer(training_path, env, buffer_size, n_runners, timeout=timeout)
     elif executer == "slurm":
         # Typical Slurm configs for TU Braunschweig cluster
+        if simulation == "weirOverflow":
+            t_max = "02:00:00"
+        else:
+            t_max = "00:30:00"
         config = SlurmConfig(
-            n_tasks=env.mpi_ranks, n_nodes=1, partition="standard", time="00:30:00",
+            n_tasks=env.mpi_ranks, n_nodes=1, partition="standard", time=t_max,
             modules=["singularity/latest", "mpi/openmpi/4.1.1/gcc"], job_name="drl_train"
         )
         """
@@ -191,7 +208,8 @@ class RunTrainingInDebugger:
         self.manualSeed = seed
         self.timeout = timeout
         self.checkpoint = ""
-        self.simulation = "cylinder2D"
+        # self.simulation = "cylinder2D"
+        self.simulation = "weirOverflow"
 
     def set_openfoam_bashrc(self, path: str):
         system(f"sed -i '5i # source bashrc for openFOAM for debugging purposes\\n{self.command}' {path}/Allrun.pre")
@@ -200,7 +218,7 @@ class RunTrainingInDebugger:
 
 if __name__ == "__main__":
     # option for running the training in IDE, e.g. in debugger
-    DEBUG = True
+    DEBUG = False
 
     if not DEBUG:
         main(parseArguments())
@@ -223,7 +241,10 @@ if __name__ == "__main__":
         chdir(BASE_PATH)
 
         # test MB-DRL on local machine for cylinder2D
-        d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, finish=0.25, seed=0)
+        # d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, finish=0.25, seed=0)
+
+        # test MB-DRL on local machine for weirOverflow
+        d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, finish=20, seed=0)
 
         # run PPO training
         main(d_args)

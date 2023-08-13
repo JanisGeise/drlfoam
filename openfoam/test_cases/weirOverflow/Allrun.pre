@@ -1,0 +1,22 @@
+#!/bin/bash
+cd "${0%/*}" || exit
+. ${DRL_BASE:?}/openfoam/RunFunctions
+#------------------------------------------------------------------------------
+# restore the 0 directory
+cp -r 0.orig 0
+
+# mesh creation with blockMesh
+runApplication blockMesh
+
+# set fields
+runApplication setFields
+
+# run checkMesh
+runApplication checkMesh
+
+# decompose and run case
+runApplication decomposePar
+runParallel renumberMesh -overwrite
+runParallel -s "pre" interFoam
+
+#------------------------------------------------------------------------------
