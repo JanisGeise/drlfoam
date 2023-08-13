@@ -1,12 +1,17 @@
 #!/bin/bash
-#SBATCH --job-name=lr2_pinball_main
-#SBATCH --ntasks=6
-#SBATCH --output=%x_%j.out
-#SBATCH --partition=queue-1
-#SBATCH --constraint=c5a.24xlarge
+#SBATCH --partition=standard
+#SBATCH --nodes=1
+#SBATCH --time=48:00:00
+#SBATCH --job-name=drl_train
+#SBATCH --ntasks-per-node=1
 
-source /fsx/OpenFOAM/OpenFOAM-v2206/etc/bashrc
-source /fsx/drlfoam_main/setup-env
-source /fsx/drlfoam_main/pydrl/bin/activate
+module load python/3.8.2
 
-python3 run_training.py -o test_pinball_lr2 -i 100 -r 10 -b 10 -f 300 -s rotatingPinball2D -e slurm &> log.pinball_main_lr2
+# adjust path if necessary
+source ~/drlfoam/pydrl/bin/activate
+source ~/drlfoam/setup-env --container
+
+# start a training with a buffer size of 8 and 8 runners;
+# save output to log.test_training
+python3 run_training.py -o "e80_r8_b8_f0.6_1st_test" -e slurm -b 8 -r 8 -f 0.6 -i 80 -m 0 &> log.training
+

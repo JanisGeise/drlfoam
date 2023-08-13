@@ -32,6 +32,7 @@ class Environment(ABC):
         self._policy = None
         self._train = None
         self._observations = None
+        self._start_control = None
 
     @abstractmethod
     def reset(self):
@@ -121,6 +122,10 @@ class Environment(ABC):
         pass
 
     @abstractproperty
+    def start_control(self) -> float:
+        pass
+
+    @abstractproperty
     def actions_bounds(self) -> Union[Tensor, float]:
         pass
 
@@ -142,7 +147,7 @@ class Environment(ABC):
 
     def update_control_properties(self, start_time: float, end_time: float,
                                   control_interval: float, action_bounds: Union[Tensor, float],
-                                  seed: int, policy: str, train: bool):
+                                  seed: int, policy: str, train: bool, start_control: float):
         self.start_time = start_time
         self.end_time = end_time
         self.control_interval = control_interval
@@ -150,3 +155,4 @@ class Environment(ABC):
         self.seed = seed
         self.policy = policy
         self.train = train
+        self.start_control = start_control

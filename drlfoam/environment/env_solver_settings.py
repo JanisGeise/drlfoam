@@ -40,7 +40,7 @@ def _parse_trajectory(path: str) -> DataFrame:
 
 
 class GAMGSolverSettings(Environment):
-    def __init__(self, r1: float = 2.0, r2: float = 1.0):
+    def __init__(self, r1: float = 2.5, r2: float = 1.0):
         super(GAMGSolverSettings, self).__init__(
             join(TESTCASE_PATH, "cylinder2D"), "Allrun.pre",
             "Allrun", "Allclean", mpi_ranks=4, n_states=7, n_actions=1
@@ -71,8 +71,9 @@ class GAMGSolverSettings(Environment):
         check_pos_float(value, "start_time", with_zero=True)
         replace_line_in_file(
             join(self.path, "system", "controlDict"),
-            "timeStart",
-            f"        timeStart       {value};"
+            "startTime",
+            f"startTime       {value};",
+            startwith_keyword=True
         )
         self._start_time = value
 
@@ -108,6 +109,20 @@ class GAMGSolverSettings(Environment):
             f"        writeInterval   {value};",
         )
         self._control_interval = value
+
+    @property
+    def start_control(self) -> float:
+        return self._start_control
+
+    @start_control.setter
+    def start_control(self, value: float):
+        check_pos_float(value, "timeStart ", with_zero=True)
+        replace_line_in_file(
+            join(self.path, "system", "controlDict"),
+            "timeStart ",
+            f"        timeStart {value};"
+        )
+        self._start_control = value
 
     @property
     def actions_bounds(self) -> float:
@@ -198,8 +213,3 @@ class GAMGSolverSettings(Environment):
         post = join(self.path, "postProcessing")
         if isdir(post):
             rmtree(post)
-        times = get_time_folders(join(self.path, "processor0"))
-        times = [t for t in times if float(t) > self.start_time]
-        for p in glob(join(self.path, "processor*")):
-            for t in times:
-                rmtree(join(p, t))

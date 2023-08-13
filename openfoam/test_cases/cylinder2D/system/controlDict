@@ -17,19 +17,19 @@ FoamFile
 
 application     pimpleFoam;
 
-startFrom       latestTime;
+startFrom       startTime;
 
 startTime       0;
 
 stopAt          endTime;
 
-endTime         0.2;
+endTime         0.6;
 
 deltaT          5.0e-5;
 
 writeControl    runTime;
 
-writeInterval   0.1;
+writeInterval   0.01;
 
 purgeWrite      0;
 
@@ -51,7 +51,7 @@ functions
         {
             type            agentSolverSettings;
             libs            ("${DRL_LIBBIN}/libAgentSolverSettings.so");
-            timeStart       0;
+            timeStart       0.6;
             fields          (p);
             policy          "policy.pt";
             train           true;

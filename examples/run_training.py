@@ -120,7 +120,7 @@ def main(args):
     elif executer == "slurm":
         # Typical Slurm configs for TU Braunschweig cluster
         config = SlurmConfig(
-            n_tasks=env.mpi_ranks, n_nodes=1, partition="standard", time="03:00:00",
+            n_tasks=env.mpi_ranks, n_nodes=1, partition="standard", time="00:30:00",
             modules=["singularity/latest", "mpi/openmpi/4.1.1/gcc"], job_name="drl_train"
         )
         """
@@ -149,14 +149,9 @@ def main(args):
         buffer._n_fills = starting_episode
     else:
         starting_episode = 0
-        # for testing purposes run base case only up to 0.001s
-        buffer.base_env.end_time = 0.001
+        buffer.base_env.end_time = end_time
         buffer.prepare()
 
-    # always start at t = 0s (will be replaced later with sampling from base case),
-    # TODO: make sure reward fct isn't influenced by sampling
-    buffer.base_env.start_time = 0
-    buffer.base_env.end_time = end_time
     buffer.reset()
 
     # begin training
@@ -205,7 +200,7 @@ class RunTrainingInDebugger:
 
 if __name__ == "__main__":
     # option for running the training in IDE, e.g. in debugger
-    DEBUG = False
+    DEBUG = True
 
     if not DEBUG:
         main(parseArguments())
@@ -228,7 +223,7 @@ if __name__ == "__main__":
         chdir(BASE_PATH)
 
         # test MB-DRL on local machine for cylinder2D
-        d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, finish=0.05, seed=0)
+        d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, finish=0.25, seed=0)
 
         # run PPO training
         main(d_args)

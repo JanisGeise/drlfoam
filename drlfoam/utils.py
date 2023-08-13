@@ -38,7 +38,7 @@ def fetch_line_from_file(path: str, keyword: str) -> str:
         return lines if len(lines) > 1 else lines[0]
 
 
-def replace_line_in_file(path: str, keyword: str, new: str):
+def replace_line_in_file(path: str, keyword: str, new: str, startwith_keyword: bool = False):
     """Keyword-based replacement of one or more lines in a file.
 
     :param path: file location
@@ -47,12 +47,18 @@ def replace_line_in_file(path: str, keyword: str, new: str):
     :type keyword: str
     :param new: the new line replacing the old one
     :type new: str
+    :param startwith_keyword: if the line starts with keyword or if the keyword is somewhere in the line
     """
     new = new + "\n" if not new.endswith("\n") else new
     fin = fileinput.input(path, inplace=True)
     for line in fin:
         if keyword in line:
-            line = new
+            if startwith_keyword and line.startswith(keyword):
+                line = new
+            elif startwith_keyword and not line.startswith(keyword):
+                line = line
+            else:
+                line = new
         sys.stdout.write(line)
     fin.close()
 
