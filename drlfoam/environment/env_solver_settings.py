@@ -1,4 +1,3 @@
-
 from typing import Tuple
 from os import remove
 from os.path import join, isfile, isdir
@@ -22,7 +21,7 @@ pt.set_default_tensor_type(DEFAULT_TENSOR_TYPE)
 
 
 def _parse_cpu_times(path: str) -> DataFrame:
-    times = read_csv(path, sep="\t", comment="#", header=None, names=["t", "t_cpu"], usecols=[0, 3])
+    times = read_csv(path, sep="\t", comment="#", header=None, names=["t", "t_tot", "t_per_dt"], usecols=[0, 1, 3])
     return times
 
 
@@ -40,7 +39,7 @@ def _parse_trajectory(path: str) -> DataFrame:
 
 
 class GAMGSolverSettings(Environment):
-    def __init__(self, r1: float = 2.5, r2: float = 1.0):
+    def __init__(self, r1: float = 0.0, r2: float = 1.0):
         super(GAMGSolverSettings, self).__init__(
             join(TESTCASE_PATH, "cylinder2D"), "Allrun.pre",
             "Allrun", "Allclean", mpi_ranks=4, n_states=7, n_actions=1
@@ -56,11 +55,11 @@ class GAMGSolverSettings(Environment):
         self._action_bounds = [0, 1]
         self._policy = "policy.pt"
 
-    def _reward(self, t: pt.Tensor) -> pt.Tensor:
-        # TODO: define proper reward fct, independently of N_cpu, env, ...,
-        #       at the moment: r1 = mean(log(t_per_dt).abs()), if t decreases log(t) increases
-        #       -> reward needs to increase with decreasing t
-        return (self._r2 * t.log().abs()) - self._r1
+    def _reward(self, t: pt.Tensor, t_tot: pt.Tensor) -> pt.Tensor:
+        # TODO: define proper reward fct, independently of N_cpu, env, ...
+        # due to sampling rewards change a lot -> scale reward per dt with t_exec for complete trajectory, so that the
+        # reward is the contribution of each time step to the total required execution time
+        return ((self._r2 * t.log().abs()) - self._r1) / t_tot.log().abs()
 
     @property
     def start_time(self) -> float:
@@ -142,11 +141,8 @@ class GAMGSolverSettings(Environment):
     @seed.setter
     def seed(self, value: int):
         check_pos_int(value, "seed", with_zero=True)
-        # proc = True if self.initialized else False
         new = f"        seed     {value};"
-
-        # TODO: for now, we don't decompose the case, so there exist no processor* dirs
-        replace_line_latest(self.path, "U", "seed", new, False)
+        replace_line_in_file(join(self.path, "system", "controlDict"), "seed", new)
         self._seed = value
 
     @property
@@ -155,9 +151,9 @@ class GAMGSolverSettings(Environment):
 
     @policy.setter
     def policy(self, value: str):
-        proc = True if self.initialized else False
+        # proc = True if self.initialized else False
         new = f"        policy     {value};"
-        replace_line_latest(self.path, "U", "policy", new, proc)
+        replace_line_in_file(join(self.path, "system", "controlDict"), "policy", new)
         self._policy = value
 
     @property
@@ -166,10 +162,9 @@ class GAMGSolverSettings(Environment):
 
     @train.setter
     def train(self, value: bool):
-        proc = True if self.initialized else False
         value_cpp = "true" if value else "false"
         new = f"        train           {value_cpp};"
-        replace_line_latest(self.path, "U", "train", new, proc)
+        replace_line_in_file(join(self.path, "system", "controlDict"), "train", new)
         self._train = value
 
     @property
@@ -194,10 +189,11 @@ class GAMGSolverSettings(Environment):
             obs["states"] = pt.from_numpy(residuals[residuals.keys()].values)
             # we need to convert the ints to float, otherwise error when printing the statistics
             obs["actions"] = pt.from_numpy(tr["interpolateCorr"].values).float()
-            obs["t_per_dt"] = pt.from_numpy(cpu_times["t_cpu"].values)
+            obs["t_per_dt"] = pt.from_numpy(cpu_times["t_per_dt"].values)
+            obs["t_cumulative"] = pt.from_numpy(cpu_times["t_tot"].values)
             obs["t"] = pt.from_numpy(cpu_times["t"].values)
             obs["probability"] = pt.from_numpy(tr["prob"].values)
-            obs["rewards"] = self._reward(obs["t_per_dt"])
+            obs["rewards"] = self._reward(obs["t_per_dt"], obs["t_cumulative"][-1])
 
         except Exception as e:
             logging.warning("Could not parse observations: ", e)
