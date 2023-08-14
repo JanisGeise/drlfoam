@@ -13,5 +13,9 @@ source ~/drlfoam/setup-env --container
 
 # start a training with a buffer size of 8 and 8 runners;
 # save output to log.test_training
-python3 run_training.py -o "e80_r8_b8_f0.6_1st_test" -e slurm -b 8 -r 8 -f 0.6 -i 80 -m 0 &> log.training
+python3 run_training.py -o "e100_r8_b8_f0.6_sampling_startTime" -e slurm -b 8 -r 8 -f 0.6 -i 100 -m 0 -s "cylinder2D" &> log.training
+
+# run a training with the weirOverflow case
+# python3 run_training.py -o "e100_r8_b8_f70_1st_test" -e slurm -b 8 -r 8 -f 70 -i 100 -m 0 -s "weirOverflow" &> log.training
+
 

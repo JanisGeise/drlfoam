@@ -201,7 +201,13 @@ class GAMGSolverSettings(Environment):
             return obs
 
     def reset(self):
-        files = ["log.pimpleFoam", "finished.txt", "trajectory.txt"]
+        # if we are not in base case, then there should be a log-file from the solver used (e.g. interFoam / pimpleFoam)
+        solver_log = glob(join(self.path, "log.*Foam"))
+        if solver_log:
+            files = [f"log.{solver_log[0].split('.')[-1]}", "finished.txt", "trajectory.txt"]
+        else:
+            # otherwise we are in the base case and have only a log.*Foam.pre, which we don't want to remove
+            files = ["finished.txt", "trajectory.txt"]
         for f in files:
             f_path = join(self.path, f)
             if isfile(f_path):

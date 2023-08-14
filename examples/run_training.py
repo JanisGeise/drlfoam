@@ -134,6 +134,7 @@ def main(args):
         # Typical Slurm configs for TU Braunschweig cluster
         if simulation == "weirOverflow":
             t_max = "02:00:00"
+            env.mpi_ranks = 8
         else:
             t_max = "00:30:00"
         config = SlurmConfig(
