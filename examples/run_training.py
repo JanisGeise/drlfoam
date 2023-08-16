@@ -133,10 +133,10 @@ def main(args):
     elif executer == "slurm":
         # Typical Slurm configs for TU Braunschweig cluster
         if simulation == "weirOverflow":
-            t_max = "02:00:00"
-            env.mpi_ranks = 8
+            t_max = "06:00:00"
+            env.mpi_ranks = 4
         else:
-            t_max = "00:30:00"
+            t_max = "00:45:00"
         config = SlurmConfig(
             n_tasks=env.mpi_ranks, n_nodes=1, partition="standard", time=t_max,
             modules=["singularity/latest", "mpi/openmpi/4.1.1/gcc"], job_name="drl_train"
@@ -242,10 +242,12 @@ if __name__ == "__main__":
         chdir(BASE_PATH)
 
         # test MB-DRL on local machine for cylinder2D
-        # d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, finish=0.25, seed=0)
+        # d_args = RunTrainingInDebugger(episodes=80, runners=2, buffer=8, finish=0.6, seed=0,
+        #                                out_dir="examples/e80_r2_b8_f0.6_local")
 
         # test MB-DRL on local machine for weirOverflow
-        d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, finish=20, seed=0)
+        d_args = RunTrainingInDebugger(episodes=80, runners=1, buffer=8, finish=70, seed=0,
+                                       out_dir="examples/e80_r1_b8_f70_local")
 
         # run PPO training
         main(d_args)

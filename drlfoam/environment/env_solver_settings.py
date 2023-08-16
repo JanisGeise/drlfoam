@@ -42,7 +42,7 @@ class GAMGSolverSettings(Environment):
     def __init__(self, r1: float = 0.0, r2: float = 1.0):
         super(GAMGSolverSettings, self).__init__(
             join(TESTCASE_PATH, "cylinder2D"), "Allrun.pre",
-            "Allrun", "Allclean", mpi_ranks=4, n_states=7, n_actions=1
+            "Allrun", "Allclean", mpi_ranks=2, n_states=7, n_actions=1
         )
         self._r1 = r1
         self._r2 = r2
