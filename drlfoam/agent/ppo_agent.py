@@ -73,20 +73,24 @@ class PPOAgent(Agent):
     def update(self, states: List[pt.Tensor], actions: List[pt.Tensor],
                rewards: List[pt.Tensor]):
 
-        values = [self._value(s).detach() for s in states]
-        # compute log_p for all but the final experience tuple
-        log_p_old = pt.cat([self._policy.predict(s[:-1], a[:-1])[0].detach() for s, a in zip(states, actions)])
+        # compute log_p for all but the final two experience tuples
+        log_p_old = pt.cat([self._policy.predict(s[:-2], a[:-2])[0].detach() for s, a in zip(states, actions)])
 
-        # TODO: states & actions @ t = t_i correspond to rewards @ t = t_i + 2, because OF reads in file prior
-        #       executing function object, so the modified fvSolution is read in one time step later
+        # states & actions @ t = t_i correspond to rewards @ t = t_i + 2, because OF reads in fvSolution prior executing
+        # function object, so the modified fvSolution is read in one time step later
+        # -> for states & actions omit the last 2 entries, for rewards the 1st entry
+        values = [self._value(s).detach()[:-1] for s in states]
+        rewards = [r[1:] for r in rewards]
+        states = [s[:-1] for s in states]
+
         returns = pt.cat([compute_returns(r, self._gamma) for r in rewards])
         gaes = pt.cat([compute_gae(r, v, self._gamma, self._lam) for r, v in zip(rewards, values)])
         gaes = (gaes - gaes.mean()) / (gaes.std() + EPS_SP)
         values = pt.cat(values)
+
         # create tensors with all but the final state/action of each trajectory for convenience
         states_wf = pt.cat([s[:-1] for s in states])
-        actions_wf = pt.cat([a[:-1] for a in actions])
-        n_actions = 1 if len(actions_wf.shape) == 1 else actions_wf.shape[-1]
+        actions_wf = pt.cat([a[:-2] for a in actions])
 
         # policy update
         p_loss_, e_loss_, kl_ = [], [], []
