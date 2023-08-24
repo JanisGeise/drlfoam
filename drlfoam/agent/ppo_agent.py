@@ -76,7 +76,7 @@ class PPOAgent(Agent):
         # compute log_p for all but the final two experience tuples
         log_p_old = pt.cat([self._policy.predict(s[:-2], a[:-2])[0].detach() for s, a in zip(states, actions)])
 
-        # states & actions @ t = t_i correspond to rewards @ t = t_i + 2, because OF reads in fvSolution prior executing
+        # states & actions @ t = t_i correspond to reward @ t = t_i + 2, because OF reads in fvSolution prior executing
         # function object, so the modified fvSolution is read in one time step later
         # -> for states & actions omit the last 2 entries, for rewards the 1st entry
         values = [self._value(s).detach()[:-1] for s in states]

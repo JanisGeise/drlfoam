@@ -33,7 +33,8 @@ def _parse_residuals(path: str) -> DataFrame:
 
 
 def _parse_trajectory(path: str) -> DataFrame:
-    names = ["t", "prob", "interpolateCorr"]
+    # names = ["t", "prob", "interpolateCorr"]
+    names = ["t", "prob0", "prob1", "prob2", "prob3", "prob4", "prob5", "action"]
     tr = pd.read_table(path, sep=",", header=0, names=names)
     return tr
 
@@ -188,11 +189,12 @@ class GAMGSolverSettings(Environment):
 
             obs["states"] = pt.from_numpy(residuals[residuals.keys()].values)
             # we need to convert the ints to float, otherwise error when printing the statistics
-            obs["actions"] = pt.from_numpy(tr["interpolateCorr"].values).float()
+            # obs["actions"] = pt.from_numpy(tr["interpolateCorr"].values).float()
+            obs["actions"] = pt.from_numpy(tr["action"].values).float()
             obs["t_per_dt"] = pt.from_numpy(cpu_times["t_per_dt"].values)
             obs["t_cumulative"] = pt.from_numpy(cpu_times["t_tot"].values)
             obs["t"] = pt.from_numpy(cpu_times["t"].values)
-            obs["probability"] = pt.from_numpy(tr["prob"].values)
+            obs["probability"] = pt.stack([pt.from_numpy(tr[f"prob{i}"].values) for i in range(6)])
             obs["rewards"] = self._reward(obs["t_per_dt"], obs["t_cumulative"][-1])
 
         except Exception as e:

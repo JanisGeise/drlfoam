@@ -45,13 +45,17 @@ class FCPolicy(pt.nn.Module):
             for hidden in range(self._n_layers - 1):
                 self._layers.append(pt.nn.Linear(self._n_neurons, self._n_neurons))
                 self._layers.append(pt.nn.LayerNorm(self._n_neurons))
-        self._last_layer = pt.nn.Linear(self._n_neurons, self._n_actions)
+        # 1 action -> selection of smoother, but 6 smoother available -> 6 output neurons
+        self._last_layer = pt.nn.Linear(self._n_neurons, 6*self._n_actions)
 
     def forward(self, x: pt.Tensor) -> pt.Tensor:
         for layer in self._layers:
             x = self._activation(layer(x))
-        # map to intervall [0, 1] since we want to output a binary probability
-        return pt.sigmoid(self._last_layer(x))
+        # map to intervall [0, 1] since we want to output a binary probability (interpolateCorrection
+        # return pt.sigmoid(self._last_layer(x))
+
+        # classification for smoother, all probabilities add up to 1
+        return pt.nn.functional.softmax(self._last_layer(x), dim=1)
 
     @pt.jit.ignore
     def _scale(self, actions: pt.Tensor) -> pt.Tensor:
@@ -60,7 +64,14 @@ class FCPolicy(pt.nn.Module):
     @pt.jit.ignore
     def predict(self, states: pt.Tensor, actions: pt.Tensor) -> pt.Tensor:
         out = self.forward(states)
-        distr = pt.distributions.Bernoulli(out)
+
+        # Bernoulli distribution for binary choice, e.g. 'interpolateCorrection'
+        # distr = pt.distributions.Bernoulli(out)
+
+        # categorical distribution for classification, e.g. smoother
+        # TODO: we need to reduce 1 dim, we can't use 2nd dim because softmax sums up to 1
+        #       not sure if sum makes sense here etc. ...
+        distr = pt.distributions.Categorical(out.sum(dim=0))
 
         log_p = distr.log_prob(actions.unsqueeze(-1))
         if len(actions.shape) == 1:
