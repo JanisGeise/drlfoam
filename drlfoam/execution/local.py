@@ -20,9 +20,10 @@ class LocalBuffer(Buffer):
         n_runners_max: int,
         keep_trajectories: bool = True,
         timeout: int = 1e15,
+        trajectory_length: int = 1000
     ):
         super(LocalBuffer, self).__init__(
-            path, base_env, buffer_size, n_runners_max, keep_trajectories, timeout
+            path, base_env, buffer_size, n_runners_max, keep_trajectories, timeout, trajectory_length
         )
 
     def prepare(self):

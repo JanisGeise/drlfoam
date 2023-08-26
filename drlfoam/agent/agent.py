@@ -69,11 +69,15 @@ class FCPolicy(pt.nn.Module):
         # distr = pt.distributions.Bernoulli(out)
 
         # categorical distribution for classification, e.g. smoother
-        # TODO: we need to reduce 1 dim, we can't use 2nd dim because softmax sums up to 1
-        #       not sure if sum makes sense here etc. ...
-        distr = pt.distributions.Categorical(out.sum(dim=0))
+        distr = pt.distributions.Categorical(out)
 
-        log_p = distr.log_prob(actions.unsqueeze(-1))
+        # in case of 'interpolateCorrection', we get 1 prob for each point in trajectory
+        if len(out.size()) == 1:
+            log_p = distr.log_prob(actions.unsqueeze(-1))
+        # else or out tensor is already 2D, so we don't need to unsqueeze, otherwise the distr has 1 dim too much
+        else:
+            log_p = distr.log_prob(actions)
+
         if len(actions.shape) == 1:
             return log_p.squeeze(), distr.entropy().squeeze()
         else:

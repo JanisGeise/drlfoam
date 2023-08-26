@@ -6,7 +6,7 @@ from shutil import copytree
 from copy import deepcopy
 import torch as pt
 from .manager import TaskManager
-from .. import get_time_folders
+from .. import get_time_folders, fetch_line_from_file
 from ..agent import FCPolicy
 from ..environment import Environment
 
@@ -20,6 +20,7 @@ class Buffer(ABC):
         n_runners_max: int,
         keep_trajectories: bool,
         timeout: int,
+        trajectory_length: int = 1000
     ):
         self._path = path
         self._base_env = base_env
@@ -30,6 +31,7 @@ class Buffer(ABC):
         self._manager = TaskManager(self._n_runners_max)
         self._envs = None
         self._n_fills = 0
+        self._len_traj = trajectory_length
 
     @abstractmethod
     def prepare(self):
@@ -69,7 +71,14 @@ class Buffer(ABC):
             # compute the start & end time (and trajectory length), so that in each episode statistically all parts of
             # the simulation are seen by the agent (trajectory length = const. for all episodes)
             env.start_time = start_times[idx[i]]
-            env.end_time = round(env.start_time + start_times[-1] / self._buffer_size, 6)
+            # env.end_time = round(env.start_time + start_times[-1] / self._buffer_size, 6)
+
+            # get the time step from the 'controlDict'
+            dt = fetch_line_from_file(join(self._base_env.path, "system", "controlDict"), "deltaT ").strip("\n;")
+
+            # compute the end time of the simulation based on the dt and traj. length -> the actual length may differ if
+            # dt != const.
+            env.end_time = round(env.start_time + self._len_traj * float(dt.split(" ")[-1]), 6)
 
             # now set the beginning of control
             env.start_control = env.start_time

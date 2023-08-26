@@ -250,10 +250,11 @@ class SlurmBuffer(Buffer):
         slurm_config: SlurmConfig,
         keep_trajectories: bool = True,
         timeout: int = 1e15,
-        wait: int = 5
+        wait: int = 5,
+        trajectory_length: int = 1000
     ):
         super(SlurmBuffer, self).__init__(
-            path, base_env, buffer_size, n_runners_max, keep_trajectories, timeout
+            path, base_env, buffer_size, n_runners_max, keep_trajectories, timeout, trajectory_length
         )
         self._config = slurm_config
         self._wait = wait

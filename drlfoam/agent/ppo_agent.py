@@ -33,7 +33,7 @@ class PPOAgent(Agent):
                  value_clip: float = 0.1,
                  value_grad_norm: float = float("inf"),
                  value_mse_stop: float = 25.0,
-                 gamma: float = 0.995,
+                 gamma: float = 0.99,
                  lam: float = 0.97,
                  entropy_weight: float = 0.01
                  ):
