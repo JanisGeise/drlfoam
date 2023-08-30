@@ -14,3 +14,4 @@ policy = FCPolicy(n_states=7, n_actions=1, action_min=pt.zeros(1,), action_max=p
 
 script = pt.jit.script(policy)
 script.save(join("..", "openfoam", "test_cases", "cylinder2D", "policy.pt"))
+script.save(join("..", "openfoam", "test_cases", "weirOverflow", "policy.pt"))
