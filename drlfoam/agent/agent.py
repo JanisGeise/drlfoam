@@ -27,7 +27,7 @@ def compute_gae(rewards: pt.Tensor, values: pt.Tensor, gamma: float = 0.99, lam:
 
 class FCPolicy(pt.nn.Module):
     def __init__(self, n_states: int, n_actions: int, action_min: pt.Tensor,
-                 action_max: pt.Tensor, n_layers: int = 2, n_neurons: int = 64,
+                 action_max: pt.Tensor, n_layers: int = 2, n_neurons: int = 64, n_output: int = 1,
                  activation: Callable = pt.nn.functional.relu):
         super(FCPolicy, self).__init__()
         self._n_states = n_states
@@ -45,13 +45,14 @@ class FCPolicy(pt.nn.Module):
             for hidden in range(self._n_layers - 1):
                 self._layers.append(pt.nn.Linear(self._n_neurons, self._n_neurons))
                 self._layers.append(pt.nn.LayerNorm(self._n_neurons))
-        # 1 action -> selection of smoother, but 6 smoother available -> 6 output neurons
-        self._last_layer = pt.nn.Linear(self._n_neurons, 6*self._n_actions)
+        # smoother: 1 action -> selection of smoother, but 6 smoother available -> 6 output neurons
+        # interpolateCorrection 1 action, 1 output neuron (probability)
+        self._last_layer = pt.nn.Linear(self._n_neurons, self._n_actions * n_output)
 
     def forward(self, x: pt.Tensor) -> pt.Tensor:
         for layer in self._layers:
             x = self._activation(layer(x))
-        # map to intervall [0, 1] since we want to output a binary probability (interpolateCorrection
+        # map to intervall [0, 1] since we want to output a binary probability (interpolateCorrection)
         # return pt.sigmoid(self._last_layer(x))
 
         # classification for smoother, all probabilities add up to 1
@@ -71,10 +72,12 @@ class FCPolicy(pt.nn.Module):
         # categorical distribution for classification, e.g. smoother
         distr = pt.distributions.Categorical(out)
 
-        # in case of 'interpolateCorrection', we get 1 prob for each point in trajectory
-        if len(out.size()) == 1:
+        # in case of 'interpolateCorrection', we get 1 prob for each point in trajectory,
+        # size(out) = [len_traj, 1], size(actions) = [len_traj,]
+        if out.size()[1] == 1:
             log_p = distr.log_prob(actions.unsqueeze(-1))
-        # else or out tensor is already 2D, so we don't need to unsqueeze, otherwise the distr has 1 dim too much
+        # else or out tensor is already 2D, so we don't need to unsqueeze, otherwise the distr has 1 dim too much,
+        # size(out) = [len_traj, n_smoother], size(actions) = [len_traj, 1]
         else:
             log_p = distr.log_prob(actions)
 

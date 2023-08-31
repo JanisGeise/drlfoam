@@ -9,8 +9,11 @@ sys.path.insert(0, BASE_PATH)
 import torch as pt
 from drlfoam.agent import FCPolicy
 
-# 6 smoother available (0, ..., 5), but 1 action (selection of smoother is only parameter)
-policy = FCPolicy(n_states=7, n_actions=1, action_min=pt.zeros(1,), action_max=pt.ones(1,)*5)
+# 'smoother': action_max: 6 smoother available (0, ..., 5), but 1 action (selection of smoother is only parameter)
+policy = FCPolicy(n_states=7, n_actions=1, action_min=pt.zeros(1,), action_max=pt.ones(1,)*5, n_output=6)
+
+# 'interpolateCorrection'
+# policy = FCPolicy(n_states=7, n_actions=1, action_min=pt.zeros(1,), action_max=pt.ones(1,), n_output=1)
 
 script = pt.jit.script(policy)
 script.save(join("..", "openfoam", "test_cases", "cylinder2D", "policy.pt"))
