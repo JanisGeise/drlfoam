@@ -32,9 +32,8 @@ def _parse_residuals(path: str) -> DataFrame:
     return residuals
 
 
-def _parse_trajectory(path: str) -> DataFrame:
-    # names = ["t", "prob", "action"]             # interpolateCorrection
-    names = ["t", "prob0", "prob1", "prob2", "prob3", "prob4", "prob5", "action"]
+def _parse_trajectory(path: str, n_outputs: int) -> DataFrame:
+    names = ["t"] + [f"prob{i}" for i in range(n_outputs)] + ["action"]
     tr = pd.read_table(path, sep=",", header=0, names=names)
     return tr
 
@@ -178,7 +177,7 @@ class GAMGSolverSettings(Environment):
             cpu_times = _parse_cpu_times(t_exec_path)
 
             # load the trajectory containing the probability and action
-            tr = _parse_trajectory(join(self.path, "trajectory.txt"))
+            tr = _parse_trajectory(join(self.path, "trajectory.txt"), self._n_outputs)
 
             # load the residual data
             residuals_path = glob(join(self.path, "postProcessing", "residuals", "*", "agentSolverSettings.dat"))[0]
@@ -190,13 +189,11 @@ class GAMGSolverSettings(Environment):
 
             obs["states"] = pt.from_numpy(residuals[residuals.keys()].values)
             # we need to convert the ints to float, otherwise error when printing the statistics
-            # obs["actions"] = pt.from_numpy(tr["action"].values).float()       # interpolateCorrection
             obs["actions"] = pt.from_numpy(tr["action"].values).float()
             obs["t_per_dt"] = pt.from_numpy(cpu_times["t_per_dt"].values)
             obs["t_cumulative"] = pt.from_numpy(cpu_times["t_tot"].values)
             obs["t"] = pt.from_numpy(cpu_times["t"].values)
-            obs["probability"] = pt.stack([pt.from_numpy(tr[f"prob{i}"].values) for i in range(6)])
-            # obs["probability"] = pt.from_numpy(tr["prob"].values)             # interpolateCorrection
+            obs["probability"] = pt.stack([pt.from_numpy(tr[f"prob{i}"].values) for i in range(self._n_outputs)])
             obs["rewards"] = self._reward(obs["t_per_dt"], obs["t_cumulative"][-1])
 
         except Exception as e:

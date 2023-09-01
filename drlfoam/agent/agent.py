@@ -37,7 +37,7 @@ class FCPolicy(pt.nn.Module):
         self._n_layers = n_layers
         self._n_neurons = n_neurons
         self._activation = activation
-        self._n_output = n_output           # number of output neurons, for smoother = amount of available smoother
+        self._n_output = n_output           # number of output neurons, for smoother = e.g. amount of available smoother
 
         # set up policy network
         self._layers = pt.nn.ModuleList()
@@ -54,10 +54,12 @@ class FCPolicy(pt.nn.Module):
         for layer in self._layers:
             x = self._activation(layer(x))
         # map to intervall [0, 1] since we want to output a binary probability (interpolateCorrection)
-        # return pt.sigmoid(self._last_layer(x))
+        if self._n_output == 1:
+            return pt.sigmoid(self._last_layer(x))
 
         # classification for smoother, all probabilities add up to 1
-        return pt.nn.functional.softmax(self._last_layer(x), dim=1)
+        else:
+            return pt.nn.functional.softmax(self._last_layer(x), dim=1)
 
     @pt.jit.ignore
     def _scale(self, actions: pt.Tensor) -> pt.Tensor:
@@ -68,10 +70,12 @@ class FCPolicy(pt.nn.Module):
         out = self.forward(states)
 
         # Bernoulli distribution for binary choice, e.g. 'interpolateCorrection'
-        # distr = pt.distributions.Bernoulli(out)
+        if self._n_output == 1:
+            distr = pt.distributions.Bernoulli(out)
 
         # categorical distribution for classification, e.g. smoother
-        distr = pt.distributions.Categorical(out)
+        else:
+            distr = pt.distributions.Categorical(out)
 
         # in case of 'interpolateCorrection', we get 1 prob for each point in trajectory,
         # size(out) = [len_traj, 1], size(actions) = [len_traj,]
