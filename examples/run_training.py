@@ -156,7 +156,7 @@ def main(args):
             f"Unknown executer {executer}; available options are 'local' and 'slurm'.")
 
     # create PPO agent
-    agent = PPOAgent(env.n_states, env.n_actions, env.action_bounds[0], env.action_bounds[1],
+    agent = PPOAgent(env.n_states, env.n_actions, env.action_bounds[0], env.action_bounds[1], env.n_output,
                      **DEFAULT_CONFIG[simulation])
 
     # load checkpoint if provided
@@ -197,7 +197,7 @@ class RunTrainingInDebugger:
     """
 
     def __init__(self, episodes: int = 2, runners: int = 2, buffer: int = 2, finish: float = 5.0,
-                 seed: int = 0, timeout: int = 1e15, out_dir: str = "examples/TEST"):
+                 seed: int = 0, timeout: int = 1e15, out_dir: str = "examples/TEST", checkpoint: str = ""):
         self.command = ". /usr/lib/openfoam/openfoam2206/etc/bashrc"
         self.output = out_dir
         self.iter = episodes
@@ -208,7 +208,7 @@ class RunTrainingInDebugger:
         self.debug = True
         self.manualSeed = seed
         self.timeout = timeout
-        self.checkpoint = ""
+        self.checkpoint = checkpoint
         # self.simulation = "cylinder2D"
         self.simulation = "weirOverflow"
 
@@ -242,12 +242,12 @@ if __name__ == "__main__":
         chdir(BASE_PATH)
 
         # test MB-DRL on local machine for cylinder2D
-        # d_args = RunTrainingInDebugger(episodes=80, runners=2, buffer=8, finish=0.6, seed=0,
-        #                                out_dir="examples/e80_r2_b8_f0.6_local")
+        # d_args = RunTrainingInDebugger(episodes=46, runners=2, buffer=8, finish=0.6, seed=0,
+        #                                out_dir="examples/e46_r2_b8_f0.6_local_new_distr_2nd")
 
         # test MB-DRL on local machine for weirOverflow
-        d_args = RunTrainingInDebugger(episodes=80, runners=1, buffer=8, finish=70, seed=0,
-                                       out_dir="examples/e80_r1_b8_f70_local")
+        d_args = RunTrainingInDebugger(episodes=50, runners=1, buffer=3, finish=70, seed=0,
+                                       out_dir="examples/e50_r1_b8_f70_local_1st_test")
 
         # run PPO training
         main(d_args)

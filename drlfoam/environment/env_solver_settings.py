@@ -43,7 +43,7 @@ class GAMGSolverSettings(Environment):
     def __init__(self, r1: float = 0.0, r2: float = 1.0):
         super(GAMGSolverSettings, self).__init__(
             join(TESTCASE_PATH, "cylinder2D"), "Allrun.pre",
-            "Allrun", "Allclean", mpi_ranks=2, n_states=7, n_actions=1
+            "Allrun", "Allclean", mpi_ranks=2, n_states=7, n_actions=1, n_output=6
         )
         self._r1 = r1
         self._r2 = r2
@@ -53,7 +53,8 @@ class GAMGSolverSettings(Environment):
         self._control_interval = 0.01
         self._train = True
         self._seed = 0
-        self._action_bounds = [0, 1]
+        self._action_bounds = [0, 5]
+        self._n_outputs = 6             # output neurons for policy network, 6 = amount of available smoother
         self._policy = "policy.pt"
 
     def _reward(self, t: pt.Tensor, t_tot: pt.Tensor) -> pt.Tensor:

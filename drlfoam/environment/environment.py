@@ -15,7 +15,7 @@ from ..utils import check_path, check_file, check_pos_int
 class Environment(ABC):
     def __init__(self, path: str, initializer_script: str, run_script: str,
                  clean_script: str, mpi_ranks: int, n_states: int,
-                 n_actions: int):
+                 n_actions: int, n_output: int):
         self.path = path
         self.initializer_script = initializer_script
         self.run_script = run_script
@@ -23,6 +23,7 @@ class Environment(ABC):
         self.mpi_ranks = mpi_ranks
         self.n_states = n_states
         self.n_actions = n_actions
+        self.n_output = n_output
         self._initialized = False
         self._start_time = None
         self._end_time = None

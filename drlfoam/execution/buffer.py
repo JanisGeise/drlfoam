@@ -22,6 +22,7 @@ class Buffer(ABC):
         timeout: int,
         trajectory_length: int = 1000
     ):
+        self._counter = None
         self._path = path
         self._base_env = base_env
         self._buffer_size = buffer_size
@@ -62,7 +63,17 @@ class Buffer(ABC):
         # sample a start time for each copy based on all available start times from the base case in order to
         # increase variance while keeping the trajectory length & run times low, all times have the same probability
         start_times = sorted(map(float, get_time_folders(join(self._base_env.path, "processor0"))))
-        idx = pt.multinomial(pt.ones(len(start_times)) / len(start_times), self._buffer_size)
+
+        # initialize counter for counting how often which start time was already sampled,
+        # ones because weights =  1 / counter
+        if self._counter is None:
+            self._counter = pt.ones(len(start_times))
+
+        # sample start times based on the counter
+        idx = pt.multinomial(1 / self._counter, self._buffer_size)
+
+        # update the counter
+        self._counter[idx] += 1
 
         for i, env in enumerate(self.envs):
             # reset the environment but leave all time folders, so we can initialize a new start time
@@ -71,7 +82,6 @@ class Buffer(ABC):
             # compute the start & end time (and trajectory length), so that in each episode statistically all parts of
             # the simulation are seen by the agent (trajectory length = const. for all episodes)
             env.start_time = start_times[idx[i]]
-            # env.end_time = round(env.start_time + start_times[-1] / self._buffer_size, 6)
 
             # get the time step from the 'controlDict'
             dt = fetch_line_from_file(join(self._base_env.path, "system", "controlDict"), "deltaT ").strip("\n;")

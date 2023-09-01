@@ -20,7 +20,7 @@ PPO_STATE_KEYS = ("policy_state", "value_state", "policy_optimizer_state",
 
 
 class PPOAgent(Agent):
-    def __init__(self, n_states, n_actions, action_min, action_max,
+    def __init__(self, n_states, n_actions, action_min, action_max, n_output,
                  policy_dict: dict = DEFAULT_FC_DICT,
                  policy_epochs: int = 100,
                  policy_lr: float = 1e-4,
@@ -54,10 +54,11 @@ class PPOAgent(Agent):
         self._gamma = gamma
         self._lam = lam
         self._entropy_weight = entropy_weight
+        self._n_output = n_output
 
         # networks and optimizers
         self._policy = FCPolicy(self._n_states, self._n_actions, self._action_min,
-                                self._action_max, **policy_dict)
+                                self._action_max, self._n_output, **policy_dict)
         self._policy_optimizer = pt.optim.Adam(
             self._policy.parameters(), lr=self._policy_lr
         )

@@ -27,7 +27,7 @@ def compute_gae(rewards: pt.Tensor, values: pt.Tensor, gamma: float = 0.99, lam:
 
 class FCPolicy(pt.nn.Module):
     def __init__(self, n_states: int, n_actions: int, action_min: pt.Tensor,
-                 action_max: pt.Tensor, n_layers: int = 2, n_neurons: int = 64, n_output: int = 1,
+                 action_max: pt.Tensor, n_output: int, n_layers: int = 2, n_neurons: int = 64,
                  activation: Callable = pt.nn.functional.relu):
         super(FCPolicy, self).__init__()
         self._n_states = n_states
@@ -37,6 +37,7 @@ class FCPolicy(pt.nn.Module):
         self._n_layers = n_layers
         self._n_neurons = n_neurons
         self._activation = activation
+        self._n_output = n_output           # number of output neurons, for smoother = amount of available smoother
 
         # set up policy network
         self._layers = pt.nn.ModuleList()
@@ -47,7 +48,7 @@ class FCPolicy(pt.nn.Module):
                 self._layers.append(pt.nn.LayerNorm(self._n_neurons))
         # smoother: 1 action -> selection of smoother, but 6 smoother available -> 6 output neurons
         # interpolateCorrection 1 action, 1 output neuron (probability)
-        self._last_layer = pt.nn.Linear(self._n_neurons, self._n_actions * n_output)
+        self._last_layer = pt.nn.Linear(self._n_neurons, self._n_actions * self._n_output)
 
     def forward(self, x: pt.Tensor) -> pt.Tensor:
         for layer in self._layers:
