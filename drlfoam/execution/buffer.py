@@ -59,7 +59,6 @@ class Buffer(ABC):
         policy.save(join(self.base_env.path, self.base_env.policy))
 
     def reset(self):
-
         # sample a start time for each copy based on all available start times from the base case in order to
         # increase variance while keeping the trajectory length & run times low, all times have the same probability
         start_times = sorted(map(float, get_time_folders(join(self._base_env.path, "processor0"))))
@@ -99,10 +98,7 @@ class Buffer(ABC):
             proc.wait()
 
     def save_trajectories(self):
-        pt.save(
-            [env.observations for env in self.envs],
-            join(self._path, f"observations_{self._n_fills}.pt")
-        )
+        pt.save([env.observations for env in self.envs], join(self._path, f"observations_{self._n_fills}.pt"))
 
     @property
     def base_env(self) -> Environment:
