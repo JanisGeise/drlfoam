@@ -133,7 +133,7 @@ def main(args):
     elif executer == "slurm":
         # Typical Slurm configs for TU Braunschweig cluster
         if simulation == "weirOverflow":
-            t_max = "06:00:00"
+            t_max = "02:30:00"
             env.mpi_ranks = 4
         else:
             t_max = "00:45:00"
@@ -209,8 +209,8 @@ class RunTrainingInDebugger:
         self.manualSeed = seed
         self.timeout = timeout
         self.checkpoint = checkpoint
-        # self.simulation = "cylinder2D"
-        self.simulation = "weirOverflow"
+        self.simulation = "cylinder2D"
+        # self.simulation = "weirOverflow"
 
     def set_openfoam_bashrc(self, path: str):
         system(f"sed -i '5i # source bashrc for openFOAM for debugging purposes\\n{self.command}' {path}/Allrun.pre")
@@ -242,12 +242,12 @@ if __name__ == "__main__":
         chdir(BASE_PATH)
 
         # test MB-DRL on local machine for cylinder2D
-        # d_args = RunTrainingInDebugger(episodes=46, runners=2, buffer=8, finish=0.6, seed=0,
-        #                                out_dir="examples/e46_r2_b8_f0.6_local_new_distr_2nd")
+        d_args = RunTrainingInDebugger(episodes=2, runners=2, buffer=2, finish=0.01, seed=0,
+                                       out_dir="examples/TEST")
 
         # test MB-DRL on local machine for weirOverflow
-        d_args = RunTrainingInDebugger(episodes=50, runners=1, buffer=3, finish=70, seed=0,
-                                       out_dir="examples/e50_r1_b8_f70_local_1st_test")
+        # d_args = RunTrainingInDebugger(episodes=2, runners=1, buffer=2, finish=70, seed=0,
+        #                                out_dir="examples/TEST")
 
         # run PPO training
         main(d_args)

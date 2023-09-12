@@ -32,8 +32,8 @@ def _parse_residuals(path: str) -> DataFrame:
     return residuals
 
 
-def _parse_trajectory(path: str, n_outputs: int) -> DataFrame:
-    names = ["t"] + [f"prob{i}" for i in range(n_outputs)] + ["action"]
+def _parse_trajectory(path: str, n_outputs: int, n_actions: int) -> DataFrame:
+    names = ["t"] + [f"prob{i}" for i in range(n_outputs)] + [f"action{i}" for i in range(n_actions)]
     tr = pd.read_table(path, sep=",", header=0, names=names)
     return tr
 
@@ -42,7 +42,7 @@ class GAMGSolverSettings(Environment):
     def __init__(self, r1: float = 0.0, r2: float = 1.0):
         super(GAMGSolverSettings, self).__init__(
             join(TESTCASE_PATH, "cylinder2D"), "Allrun.pre",
-            "Allrun", "Allclean", mpi_ranks=2, n_states=7, n_actions=1, n_output=6
+            "Allrun", "Allclean", mpi_ranks=2, n_states=7, n_actions=2, n_output=7
         )
         self._r1 = r1
         self._r2 = r2
@@ -52,8 +52,8 @@ class GAMGSolverSettings(Environment):
         self._control_interval = 0.01
         self._train = True
         self._seed = 0
-        self._action_bounds = [0, 5]
-        self._n_outputs = 6             # output neurons for policy network, 6 = amount of available smoother
+        self._action_bounds = [0, 6]
+        self._n_outputs = 7             # output neurons for policy network
         self._policy = "policy.pt"
 
     def _reward(self, t: pt.Tensor, t_tot: pt.Tensor) -> pt.Tensor:
@@ -177,7 +177,7 @@ class GAMGSolverSettings(Environment):
             cpu_times = _parse_cpu_times(t_exec_path)
 
             # load the trajectory containing the probability and action
-            tr = _parse_trajectory(join(self.path, "trajectory.txt"), self._n_outputs)
+            tr = _parse_trajectory(join(self.path, "trajectory.txt"), self._n_outputs, self._n_actions)
 
             # load the residual data
             residuals_path = glob(join(self.path, "postProcessing", "residuals", "*", "agentSolverSettings.dat"))[0]
@@ -188,11 +188,15 @@ class GAMGSolverSettings(Environment):
                 residuals[name] = np.abs(np.log(residuals[name]))
 
             obs["states"] = pt.from_numpy(residuals[residuals.keys()].values)
-            # we need to convert the ints to float, otherwise error when printing the statistics
-            obs["actions"] = pt.from_numpy(tr["action"].values).float()
+            # we need to convert the ints of the actions to float, otherwise error when printing the statistics,
+            # however, the print_statistic is not really useful at the moment anyway since we have different actions
+            obs["actions"] = pt.stack([pt.from_numpy(tr[f"action{i}"].values).float() for i in range(self._n_actions)],
+                                      dim=1)
             obs["t_per_dt"] = pt.from_numpy(cpu_times["t_per_dt"].values)
             obs["t_cumulative"] = pt.from_numpy(cpu_times["t_tot"].values)
             obs["t"] = pt.from_numpy(cpu_times["t"].values)
+
+            # prob0 corresponds to 'interpolateCorrection', all other probs to smoother
             obs["probability"] = pt.stack([pt.from_numpy(tr[f"prob{i}"].values) for i in range(self._n_outputs)])
             obs["rewards"] = self._reward(obs["t_per_dt"], obs["t_cumulative"][-1])
 
