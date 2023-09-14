@@ -68,8 +68,22 @@ class Buffer(ABC):
         if self._counter is None:
             self._counter = pt.ones(len(start_times))
 
+        # get the time step from the 'controlDict'
+        dt = float(fetch_line_from_file(join(self._base_env.path, "system", "controlDict"),
+                                        "deltaT ").strip("\n;").split(" ")[-1])
+
+        # make sure that we don't exceed the end time of the base case, because then we wouldn't have data of the base
+        # case available for reward function (if sampled t_start + len_trajectory > t_end_base)
+        weights = 1 / self._counter
+
+        # set the weights for sampling to zero if the trajectory would exceed last dt of base case to make sure that
+        # they are never drawn, else multiply with one (= leave weights as they are), * 1.1 as safety factor in case
+        # dt != const. the trajectory length may differ by a few dt depending on solver settings
+        max_t = pt.tensor([0 if t + self._len_traj * dt * 1.1 >= max(start_times) else 1 for t in start_times])
+        weights *= max_t
+
         # sample start times based on the counter
-        idx = pt.multinomial(1 / self._counter, self._buffer_size)
+        idx = pt.multinomial(weights, self._buffer_size)
 
         # update the counter
         self._counter[idx] += 1
@@ -82,12 +96,9 @@ class Buffer(ABC):
             # the simulation are seen by the agent (trajectory length = const. for all episodes)
             env.start_time = start_times[idx[i]]
 
-            # get the time step from the 'controlDict'
-            dt = fetch_line_from_file(join(self._base_env.path, "system", "controlDict"), "deltaT ").strip("\n;")
-
             # compute the end time of the simulation based on the dt and traj. length -> the actual length may differ if
             # dt != const.
-            env.end_time = round(env.start_time + self._len_traj * float(dt.split(" ")[-1]), 6)
+            env.end_time = round(env.start_time + self._len_traj * dt, 6)
 
             # now set the beginning of control
             env.start_control = env.start_time

@@ -51,7 +51,7 @@ functions
         {
             type            agentSolverSettings;
             libs            ("${DRL_LIBBIN}/libAgentSolverSettings.so");
-            timeStart       0.6;
+            timeStart       42;
             fields          (p);
             policy          "policy.pt";
             train           true;

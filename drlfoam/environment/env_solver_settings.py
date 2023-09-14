@@ -44,6 +44,8 @@ class GAMGSolverSettings(Environment):
             join(TESTCASE_PATH, "cylinder2D"), "Allrun.pre",
             "Allrun", "Allclean", mpi_ranks=2, n_states=7, n_actions=2, n_output=7
         )
+        self._const_dt = None
+        self._t_base = None
         self._r1 = r1
         self._r2 = r2
         self._initialized = False
@@ -56,11 +58,26 @@ class GAMGSolverSettings(Environment):
         self._n_outputs = 7             # output neurons for policy network
         self._policy = "policy.pt"
 
-    def _reward(self, t: pt.Tensor, t_tot: pt.Tensor) -> pt.Tensor:
-        # TODO: define proper reward fct, independently of N_cpu, env, ...
-        # due to sampling rewards change a lot -> scale reward per dt with t_exec for complete trajectory, so that the
-        # reward is the contribution of each time step to the total required execution time
-        return ((self._r2 * t.log().abs()) - self._r1) / t_tot.log().abs()
+    def _reward(self, t_cpu: pt.Tensor, dt: pt.Tensor, t_traj: pt.Tensor) -> pt.Tensor:
+        # if the time step is const., we can directly compute the difference
+        if self._const_dt:
+            # determine the start idx of the dt of the base case from which the current trajectory is starting
+            idx_start = pt.where(self._t_base[:, 0] == dt[0])[0]
+
+            # save the part of the base case which is present in the trajectory for clarity
+            t_cpu_base = self._t_base[idx_start:idx_start+dt.size()[0], 1]
+        else:
+            # otherwise dt != const., so we have to interpolate the time steps and corresponding CPU time per time step
+            # of the base case. We want to interpolate the dt of the base case on the dt of the trajectory
+            t_cpu_base = pt.from_numpy(np.interp(dt, self._t_base[:, 0], self._t_base[:, 1]))
+
+        # scale with mean execution time per dt of the base case
+        # return (t_cpu_base - t_cpu) / pt.mean(t_cpu_base)
+
+        # duration to compute the trajectory for normalization maybe better if multiple envs of different complexity
+        # should be combined in PPO-training routine. log() in order to scale rewards in range [0, 1], since the exec
+        # time of the trajectory is always >> 1s, there are no ambiguities
+        return (t_cpu_base - t_cpu) / t_traj.log()
 
     @property
     def start_time(self) -> float:
@@ -198,7 +215,7 @@ class GAMGSolverSettings(Environment):
 
             # prob0 corresponds to 'interpolateCorrection', all other probs to smoother
             obs["probability"] = pt.stack([pt.from_numpy(tr[f"prob{i}"].values) for i in range(self._n_outputs)])
-            obs["rewards"] = self._reward(obs["t_per_dt"], obs["t_cumulative"][-1])
+            obs["rewards"] = self._reward(obs["t_per_dt"], obs["t"], obs["t_cumulative"][-1])
 
         except Exception as e:
             logging.warning("Could not parse observations: ", e)
@@ -220,3 +237,18 @@ class GAMGSolverSettings(Environment):
         post = join(self.path, "postProcessing")
         if isdir(post):
             rmtree(post)
+
+    def set_cpu_times_base(self):
+        # if counter is None, then we didn't load the CPU times and time steps of base case as well, so load them
+        # load the CPU times per time step and physical time of the base case as reference
+        self._t_base = _parse_cpu_times(glob(join(self._path, "postProcessing", "time", "*", "timeInfo.dat"))[0])
+        self._t_base.drop("t_tot", axis=1, inplace=True)
+
+        # convert to tensor in order to do computations later easier
+        self._t_base = pt.tensor(self._t_base.values)
+        
+        # check if the time step is const. or based on Courant number, therefore crete evenly spaced tensor based on the
+        # loaded dt and check if they are the same, if not then we don't have a const. dt,
+        # rtol=1e-12 << dt to make sure there are no round-off errors when comparing to the tmp tensor
+        tmp = pt.linspace(self._t_base[0, 0], self._t_base[-1, 0], self._t_base.size()[0])
+        self._const_dt = True if pt.allclose(tmp, self._t_base[:, 0], rtol=1e-12) else False

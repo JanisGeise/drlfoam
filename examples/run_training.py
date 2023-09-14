@@ -170,6 +170,9 @@ def main(args):
         buffer.base_env.end_time = end_time
         buffer.prepare()
 
+    # load the time steps and corresponding CPU times of the base case for reward function
+    env.set_cpu_times_base()
+
     buffer.reset()
 
     # begin training
@@ -242,7 +245,7 @@ if __name__ == "__main__":
         chdir(BASE_PATH)
 
         # test MB-DRL on local machine for cylinder2D
-        d_args = RunTrainingInDebugger(episodes=2, runners=2, buffer=2, finish=0.01, seed=0,
+        d_args = RunTrainingInDebugger(episodes=2, runners=2, buffer=2, finish=0.1, seed=0,
                                        out_dir="examples/TEST")
 
         # test MB-DRL on local machine for weirOverflow

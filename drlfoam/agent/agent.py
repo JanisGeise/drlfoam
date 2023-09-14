@@ -90,11 +90,9 @@ class FCPolicy(pt.nn.Module):
 
         # else or out tensor is already 2D, so we don't need to unsqueeze, otherwise the distr has 1 dim too much,
         # size(out) = [len_traj, n_smoother], size(actions) = [len_traj, 1]
-        # TODO: kind weird because behavior should be the same as smoother only... maybe dims are not correct yet
         log_p2 = distr2.log_prob(actions[:, 1]).unsqueeze(-1)
 
         # merge the log-probs & entropies
-        # TODO: not sure if it makes sense, but it was done for fluidic pinball / flow control as well ...
         log_p = pt.cat([log_p1, log_p2], dim=1)
         entropies = pt.cat([distr1.entropy(), distr2.entropy().unsqueeze(-1)], dim=1)
 
