@@ -136,7 +136,7 @@ def main(args):
             t_max = "02:30:00"
             env.mpi_ranks = 4
         else:
-            t_max = "00:45:00"
+            t_max = "01:00:00"
         config = SlurmConfig(
             n_tasks=env.mpi_ranks, n_nodes=1, partition="standard", time=t_max,
             modules=["singularity/latest", "mpi/openmpi/4.1.1/gcc"], job_name="drl_train"

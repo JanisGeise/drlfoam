@@ -39,7 +39,7 @@ def _parse_trajectory(path: str, n_outputs: int, n_actions: int) -> DataFrame:
 
 
 class GAMGSolverSettings(Environment):
-    def __init__(self, r1: float = 0.0, r2: float = 1.0):
+    def __init__(self, r1: float = 100.0, r2: float = 1.0):
         super(GAMGSolverSettings, self).__init__(
             join(TESTCASE_PATH, "cylinder2D"), "Allrun.pre",
             "Allrun", "Allclean", mpi_ranks=2, n_states=7, n_actions=2, n_output=7
@@ -54,7 +54,7 @@ class GAMGSolverSettings(Environment):
         self._control_interval = 0.01
         self._train = True
         self._seed = 0
-        self._action_bounds = [0, 6]
+        self._action_bounds = [0, 6]    # not used because so far we don't have constraints
         self._n_outputs = 7             # output neurons for policy network
         self._policy = "policy.pt"
 
@@ -72,12 +72,12 @@ class GAMGSolverSettings(Environment):
             t_cpu_base = pt.from_numpy(np.interp(dt, self._t_base[:, 0], self._t_base[:, 1]))
 
         # scale with mean execution time per dt of the base case
-        # return (t_cpu_base - t_cpu) / pt.mean(t_cpu_base)
+        # return (t_cpu_base - t_cpu) / pt.mean(t_cpu_base) * self._r1
 
         # duration to compute the trajectory for normalization maybe better if multiple envs of different complexity
         # should be combined in PPO-training routine. log() in order to scale rewards in range [0, 1], since the exec
-        # time of the trajectory is always >> 1s, there are no ambiguities
-        return (t_cpu_base - t_cpu) / t_traj.log()
+        # time of the trajectory is always >> 1s, _r1 = 100 because otherwise rewards are ~0.0001 ... 0.001
+        return (t_cpu_base - t_cpu) / t_traj.log() * self._r1
 
     @property
     def start_time(self) -> float:
