@@ -75,9 +75,8 @@ class GAMGSolverSettings(Environment):
         # return (t_cpu_base - t_cpu) / pt.mean(t_cpu_base) * self._r1
 
         # duration to compute the trajectory for normalization maybe better if multiple envs of different complexity
-        # should be combined in PPO-training routine. log() in order to scale rewards in range [0, 1], since the exec
-        # time of the trajectory is always >> 1s, _r1 = 100 because otherwise rewards are ~0.0001 ... 0.001
-        return (t_cpu_base - t_cpu) / t_traj.log() * self._r1
+        # should be combined in PPO-training routine. r1 = 100 in order to have rewards in a range of [0, 1]
+        return (t_cpu_base - t_cpu) / t_traj * self._r1
 
     @property
     def start_time(self) -> float:
