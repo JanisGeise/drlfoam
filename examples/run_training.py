@@ -77,8 +77,6 @@ def parseArguments():
                     help="Number of runners for parallel execution.")
     ag.add_argument("-b", "--buffer", required=False, default=8, type=int,
                     help="Reply buffer size.")
-    ag.add_argument("-f", "--finish", required=False, default=8.0, type=float,
-                    help="End time of the simulations.")
     ag.add_argument("-t", "--timeout", required=False, default=1e15, type=int,
                     help="Maximum allowed runtime of a single simulation in seconds.")
     ag.add_argument("-m", "--manualSeed", required=False, default=0, type=int,
@@ -97,11 +95,13 @@ def main(args):
     episodes = args.iter
     buffer_size = args.buffer
     n_runners = args.runners
-    end_time = args.finish
     executer = args.environment
     timeout = args.timeout
     checkpoint_file = args.checkpoint
     simulation = args.simulation
+
+    # set end_time for base case depending on environment (if debug this will be overwritten by the finish parameter)
+    end_time = 0.8 if simulation == "cylinder2D" else 80
 
     # ensure reproducibility
     manual_seed(args.manualSeed)
@@ -126,6 +126,9 @@ def main(args):
     # if debug active -> add execution of bashrc to Allrun scripts, because otherwise the path to openFOAM is not set
     if hasattr(args, "debug"):
         args.set_openfoam_bashrc(path=env.path)
+
+        # in case of debug we can manually set the end_time, since we don't need the full base case for testing stuff
+        end_time = args.finish
 
     # create buffer
     if executer == "local":
