@@ -82,11 +82,29 @@ class Buffer(ABC):
         max_t = pt.tensor([0 if t + self._len_traj * dt * 1.1 >= max(start_times) else 1 for t in start_times])
         weights *= max_t
 
-        # sample start times based on the counter
-        idx = pt.multinomial(weights, self._buffer_size)
+        # sample start times based on the counter, if the buffer is larger than we have start times then we need to
+        # sample some start times multiple times. Here all valid start points are taken, because we can't use the last
+        # N starting points (see comment above)
+        if len([i for i in max_t if i > 0]) < self._buffer_size:
+            # make sure all available starting points are sampled at least once
+            idx1 = pt.multinomial(weights, len(weights))
 
-        # update the counter
-        self._counter[idx] += 1
+            # then sample the remaining starting points
+            idx2 = pt.multinomial(weights, self._buffer_size - len(weights))
+
+            # update the 1st counter -> not working if idx & idx2 are joined in one tensor prior update the counter
+            self._counter[idx1] += 1
+
+            # update the 2nd counter
+            self._counter[idx2] += 1
+
+            # not we can join the idx
+            idx = pt.cat([idx1, idx2])
+        else:
+            idx = pt.multinomial(weights, self._buffer_size)
+
+            # update the counter
+            self._counter[idx] += 1
 
         for i, env in enumerate(self.envs):
             # reset the environment but leave all time folders, so we can initialize a new start time
