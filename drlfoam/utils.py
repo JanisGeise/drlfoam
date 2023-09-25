@@ -29,13 +29,17 @@ def get_latest_time(path: str) -> str:
     return sorted(folders, key=float)[-1]
 
 
-def fetch_line_from_file(path: str, keyword: str) -> str:
+def fetch_line_from_file(path: str, keyword: str) -> str or None:
     with open(path) as f:
         lines = []
         for line in f.readlines():
             if keyword in line:
                 lines.append(line)
-        return lines if len(lines) > 1 else lines[0]
+        # in case the line was not found, return None
+        if not lines:
+            return None
+        else:
+            return lines if len(lines) > 1 else lines[0]
 
 
 def replace_line_in_file(path: str, keyword: str, new: str, startwith_keyword: bool = False):

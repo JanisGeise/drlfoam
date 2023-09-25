@@ -76,10 +76,17 @@ class Buffer(ABC):
         # case available for reward function (if sampled t_start + len_trajectory > t_end_base)
         weights = 1 / self._counter
 
-        # set the weights for sampling to zero if the trajectory would exceed last dt of base case to make sure that
-        # they are never drawn, else multiply with one (= leave weights as they are), * 1.1 as safety factor in case
-        # dt != const. the trajectory length may differ by a few dt depending on solver settings
-        max_t = pt.tensor([0 if t + self._len_traj * dt * 1.1 >= max(start_times) else 1 for t in start_times])
+        """
+            - set the weights for sampling to zero if the trajectory would exceed last dt of base case to make sure that
+              they are never drawn, else multiply with one (= leave weights as they are)
+            - check if dt != const -> in that case add * 3 as safety factor, because if dt != const. the trajectory 
+              length may differ by a few dt depending on solver settings (weirOverflow: ~27000 * dt for t_end = 80s 
+              -> each trajectory covers ~3s -> dt = 1e-3 in controlDict)
+            - if dt = const., the field 'adjustTimeStep' does not exist
+        """
+        var_dt = fetch_line_from_file(join(self._base_env.path, "system", "controlDict"), "adjustTimeStep ")
+        factor = 1.1 if var_dt is None else 3.1
+        max_t = pt.tensor([0 if t + self._len_traj * dt * factor >= max(start_times) else 1 for t in start_times])
         weights *= max_t
 
         # sample start times based on the counter, if the buffer is larger than we have start times then we need to
@@ -91,7 +98,7 @@ class Buffer(ABC):
             # make sure all available starting points are sampled at least once
             idx1 = pt.multinomial(weights, avail_t_start)
 
-            # then sample the remaining starting points 'replacement=True' leads
+            # then sample the remaining starting points
             idx2 = pt.multinomial(weights, self._buffer_size - avail_t_start, replacement=True)
 
             # get the occurrences of each sampled index and update the counter with them
