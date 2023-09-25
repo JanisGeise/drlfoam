@@ -85,20 +85,22 @@ class Buffer(ABC):
         # sample start times based on the counter, if the buffer is larger than we have start times then we need to
         # sample some start times multiple times. Here all valid start points are taken, because we can't use the last
         # N starting points (see comment above)
-        if len([i for i in max_t if i > 0]) < self._buffer_size:
+        avail_t_start = len([i for i in max_t if i > 0])
+
+        if avail_t_start < self._buffer_size:
             # make sure all available starting points are sampled at least once
-            idx1 = pt.multinomial(weights, len(weights))
+            idx1 = pt.multinomial(weights, avail_t_start)
 
-            # then sample the remaining starting points
-            idx2 = pt.multinomial(weights, self._buffer_size - len(weights))
+            # then sample the remaining starting points 'replacement=True' leads
+            idx2 = pt.multinomial(weights, self._buffer_size - avail_t_start, replacement=True)
 
-            # update the 1st counter -> not working if idx & idx2 are joined in one tensor prior update the counter
-            self._counter[idx1] += 1
+            # get the occurrences of each sampled index and update the counter with them
+            idx, amount = pt.unique(pt.cat([idx1, idx2]), return_counts=True)
 
-            # update the 2nd counter
-            self._counter[idx2] += 1
+            # update the counter with the sampled starting points
+            self._counter[idx] += amount
 
-            # not we can join the idx
+            # overwrite the idx with the sampled starting points, because the current idx is unique
             idx = pt.cat([idx1, idx2])
         else:
             idx = pt.multinomial(weights, self._buffer_size)
