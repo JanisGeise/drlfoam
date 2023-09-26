@@ -206,21 +206,31 @@ class GAMGSolverSettings(Environment):
             for name in ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min"]:
                 residuals[name] = np.abs(np.log(residuals[name]))
 
-            obs["states"] = pt.from_numpy(residuals[residuals.keys()].values)
+            # the time stuff is written out every as batch n time steps, so if OF crashes then we need to make sure the
+            # amount of data is consistent, the crash can occur during writing, so make sure tha last line was fully
+            # written, otherwise ignore the last line
+            if not cpu_times["t_per_dt"].tail(1).isnull().item:
+                idx = len(cpu_times["t_per_dt"])
+            else:
+                idx = len(cpu_times["t_per_dt"]) - 1
+
+            obs["states"] = pt.from_numpy(residuals[residuals.keys()].values)[:idx, :]
             # we need to convert the ints of the actions to float, otherwise error when printing the statistics,
             # however, the print_statistic is not really useful at the moment anyway since we have different actions
             obs["actions"] = pt.stack([pt.from_numpy(tr[f"action{i}"].values).float() for i in range(self._n_actions)],
-                                      dim=1)
-            obs["t_per_dt"] = pt.from_numpy(cpu_times["t_per_dt"].values)
-            obs["t_cumulative"] = pt.from_numpy(cpu_times["t_tot"].values)
-            obs["t"] = pt.from_numpy(cpu_times["t"].values)
+                                      dim=1)[:idx, :]
+            obs["t_per_dt"] = pt.from_numpy(cpu_times["t_per_dt"].values)[:idx]
+            obs["t_cumulative"] = pt.from_numpy(cpu_times["t_tot"].values)[:idx]
+            obs["t"] = pt.from_numpy(cpu_times["t"].values)[:idx]
 
             # prob0 corresponds to 'interpolateCorrection', all other probs to smoother
-            obs["probability"] = pt.stack([pt.from_numpy(tr[f"prob{i}"].values) for i in range(self._n_outputs)])
+            obs["probability"] = pt.stack([pt.from_numpy(tr[f"prob{i}"].values) for i in range(self._n_outputs)],
+                                          dim=1)[:idx, :]
             obs["rewards"] = self._reward(obs["t_per_dt"], obs["t"], obs["t_cumulative"][-1])
 
         except Exception as e:
             logging.warning("Could not parse observations: ", e)
+            logging.info(f"start time of {self.path} was: t_start = {self._start_time}")
         finally:
             return obs
 

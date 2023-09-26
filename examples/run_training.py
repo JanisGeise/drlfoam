@@ -1,13 +1,14 @@
 """ Example training script.
 """
 import sys
+from glob import glob
 from time import time
 import logging
 import argparse
 
 from torch import manual_seed, cuda
 from shutil import copytree, rmtree
-from os import makedirs, environ, system, chdir
+from os import makedirs, environ, system, chdir, remove
 from os.path import join, exists
 
 BASE_PATH = environ.get("DRL_BASE", "")
@@ -101,7 +102,7 @@ def main(args):
     simulation = args.simulation
 
     # set end_time for base case depending on environment (if debug this will be overwritten by the finish parameter)
-    end_time = 0.8 if simulation == "cylinder2D" else 80
+    end_time = 0.8 if simulation == "cylinder2D" else 81
 
     # ensure reproducibility
     manual_seed(args.manualSeed)
@@ -192,6 +193,8 @@ def main(args):
         current_policy.save(join(training_path, f"policy_trace_{e}.pt"))
         if not e == episodes - 1:
             buffer.reset()
+        # delete all slurm files, not used because they just display the path to OF container
+        [remove(s) for s in glob(join(BASE_PATH, "examples", "slurm-*.out")) if executer == "slurm"]
     logging.info(f"Training time (s): {time() - start_time}")
 
 
@@ -215,8 +218,8 @@ class RunTrainingInDebugger:
         self.manualSeed = seed
         self.timeout = timeout
         self.checkpoint = checkpoint
-        self.simulation = "cylinder2D"
-        # self.simulation = "weirOverflow"
+        # self.simulation = "cylinder2D"
+        self.simulation = "weirOverflow"
 
     def set_openfoam_bashrc(self, path: str):
         system(f"sed -i '5i # source bashrc for openFOAM for debugging purposes\\n{self.command}' {path}/Allrun.pre")
@@ -248,12 +251,12 @@ if __name__ == "__main__":
         chdir(BASE_PATH)
 
         # test MB-DRL on local machine for cylinder2D
-        d_args = RunTrainingInDebugger(episodes=2, runners=2, buffer=2, finish=0.1, seed=0,
-                                       out_dir="examples/TEST")
+        # d_args = RunTrainingInDebugger(episodes=2, runners=2, buffer=2, finish=0.1, seed=0,
+        #                                out_dir="examples/TEST")
 
         # test MB-DRL on local machine for weirOverflow
-        # d_args = RunTrainingInDebugger(episodes=2, runners=1, buffer=2, finish=70, seed=0,
-        #                                out_dir="examples/TEST")
+        d_args = RunTrainingInDebugger(episodes=20, runners=1, buffer=1, finish=70, seed=0,
+                                       out_dir="examples/TEST")
 
         # run PPO training
         main(d_args)

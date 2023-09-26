@@ -1,3 +1,4 @@
+import logging
 from os.path import join, exists
 from abc import ABC, abstractmethod
 from subprocess import Popen
@@ -60,8 +61,9 @@ class Buffer(ABC):
 
     def reset(self):
         # sample a start time for each copy based on all available start times from the base case in order to
-        # increase variance while keeping the trajectory length & run times low, all times have the same probability
-        start_times = sorted(map(float, get_time_folders(join(self._base_env.path, "processor0"))))
+        # increase variance while keeping the trajectory length & run times low, all times have the same probability,
+        # ignore the end time folder
+        start_times = sorted(map(float, get_time_folders(join(self._base_env.path, "processor0"))))[:-1]
 
         # initialize counter for counting how often which start time was already sampled,
         # ones because weights =  1 / counter
@@ -85,8 +87,8 @@ class Buffer(ABC):
             - if dt = const., the field 'adjustTimeStep' does not exist
         """
         var_dt = fetch_line_from_file(join(self._base_env.path, "system", "controlDict"), "adjustTimeStep ")
-        factor = 1.1 if var_dt is None else 3.1
-        max_t = pt.tensor([0 if t + self._len_traj * dt * factor >= max(start_times) else 1 for t in start_times])
+        factor = 1 if var_dt is None else 3
+        max_t = pt.tensor([0 if t + self._len_traj * dt * factor > max(start_times) else 1 for t in start_times])
         weights *= max_t
 
         # sample start times based on the counter, if the buffer is larger than we have start times then we need to
@@ -125,7 +127,7 @@ class Buffer(ABC):
 
             # compute the end time of the simulation based on the dt and traj. length -> the actual length may differ if
             # dt != const.
-            env.end_time = round(env.start_time + self._len_traj * dt, 6)
+            env.end_time = round(env.start_time + self._len_traj * dt * factor, 6)
 
             # now set the beginning of control
             env.start_control = env.start_time
