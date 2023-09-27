@@ -27,7 +27,7 @@ def _parse_cpu_times(path: str) -> DataFrame:
 
 def _parse_residuals(path: str) -> DataFrame:
     # names = ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min", "p_sum_iters", "p_max_iters", "p_pimple_iters"]
-    names = ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min", "p_ratio_iter", "p_pimple_iters"]
+    names = ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min", "p_ratio_iter", "p_ratio_pimple_iters"]
     # residuals = read_csv(path, sep="\t", comment="#", header=None, names=names, usecols=range(2, 9))
     residuals = read_csv(path, sep="\t", comment="#", header=None, names=names, usecols=range(2, 8))
 
@@ -230,11 +230,14 @@ class GAMGSolverSettings(Environment):
                                           dim=1)[:idx, :]
             obs["rewards"] = self._reward(obs["t_per_dt"], obs["t"], obs["t_cumulative"][-1])
 
+            return obs
+
         except Exception as e:
             logging.warning("Could not parse observations: ", e)
             logging.info(f"start time of {self.path} was: t_start = {self._start_time}")
-        finally:
-            return obs
+            exit()
+        # finally:
+        #     return obs
 
     def reset(self):
         # if we are not in base case, then there should be a log-file from the solver used (e.g. interFoam / pimpleFoam)
