@@ -26,8 +26,10 @@ def _parse_cpu_times(path: str) -> DataFrame:
 
 
 def _parse_residuals(path: str) -> DataFrame:
-    names = ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min", "p_sum_iters", "p_max_iters", "p_pimple_iters"]
-    residuals = read_csv(path, sep="\t", comment="#", header=None, names=names, usecols=range(2, 9))
+    # names = ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min", "p_sum_iters", "p_max_iters", "p_pimple_iters"]
+    names = ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min", "p_ratio_iter", "p_pimple_iters"]
+    # residuals = read_csv(path, sep="\t", comment="#", header=None, names=names, usecols=range(2, 9))
+    residuals = read_csv(path, sep="\t", comment="#", header=None, names=names, usecols=range(2, 8))
 
     return residuals
 
@@ -42,7 +44,7 @@ class GAMGSolverSettings(Environment):
     def __init__(self, r1: float = 100.0, r2: float = 1.0):
         super(GAMGSolverSettings, self).__init__(
             join(TESTCASE_PATH, "cylinder2D"), "Allrun.pre",
-            "Allrun", "Allclean", mpi_ranks=2, n_states=7, n_actions=2, n_output=7
+            "Allrun", "Allclean", mpi_ranks=2, n_states=6, n_actions=2, n_output=7
         )
         self._const_dt = None
         self._t_base = None
