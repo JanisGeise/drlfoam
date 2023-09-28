@@ -204,9 +204,13 @@ class GAMGSolverSettings(Environment):
             residuals_path = glob(join(self.path, "postProcessing", "residuals", "*", "agentSolverSettings.dat"))[0]
             residuals = _parse_residuals(residuals_path)
 
-            # convert the convergence rates etc. to log (compare to agentSolverSettings.C, predictSettings())
-            for name in ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min"]:
-                residuals[name] = np.abs(np.log(residuals[name]))
+            # convert the and scale convergence rates etc (compare to agentSolverSettings.C, predictSettings())
+            # keys = ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min", "p_ratio_iter", "p_ratio_pimple_iters"]
+            residuals = pt.from_numpy(residuals[residuals.keys()].values)
+            residuals[:, 0] = (-residuals[:, 0].log() - 1) / 10
+            residuals[:, 1] = (pt.sigmoid(residuals[:, 1]) - 0.5) / 1.5e-4
+            residuals[:, 2] = (-residuals[:, 2].log() - 1) / 10
+            residuals[:, 3] = (pt.sigmoid(residuals[:, 3]) - 0.5) / 2e-5
 
             # the time stuff is written out every as batch n time steps, so if OF crashes then we need to make sure the
             # amount of data is consistent, the crash can occur during writing, so make sure tha last line was fully
@@ -216,7 +220,7 @@ class GAMGSolverSettings(Environment):
             else:
                 idx = len(cpu_times["t_per_dt"]) - 1
 
-            obs["states"] = pt.from_numpy(residuals[residuals.keys()].values)[:idx, :]
+            obs["states"] = residuals[:idx, :]
             # we need to convert the ints of the actions to float, otherwise error when printing the statistics,
             # however, the print_statistic is not really useful at the moment anyway since we have different actions
             obs["actions"] = pt.stack([pt.from_numpy(tr[f"action{i}"].values).float() for i in range(self._n_actions)],
