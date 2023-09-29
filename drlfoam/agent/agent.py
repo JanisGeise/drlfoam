@@ -1,5 +1,5 @@
 
-from typing import Callable
+from typing import Callable, Tuple
 from abc import ABC, abstractmethod, abstractproperty
 import torch as pt
 from ..constants import DEFAULT_TENSOR_TYPE
@@ -73,30 +73,23 @@ class FCPolicy(pt.nn.Module):
         return (actions - self._action_min) / (self._action_max - self._action_min)
 
     @pt.jit.ignore
-    def predict(self, states: pt.Tensor, actions: pt.Tensor) -> pt.Tensor:
+    def predict(self, states: pt.Tensor, actions: pt.Tensor) -> Tuple[pt.Tensor, pt.Tensor, pt.Tensor, pt.Tensor]:
         # size(out) = [len_traj, n_probs], size(actions) = [len_traj, n_actions]
         out = self.forward(states)
 
         # Bernoulli distribution for binary choice ('interpolateCorrection' corresponds to 1st output neuron)
-        # unsqueeze() because out[:, 0].size() = (len_trajectory, )
-        distr1 = pt.distributions.Bernoulli(out[:, 0].unsqueeze(-1))
+        distr1 = pt.distributions.Bernoulli(out[:, 0])
 
         # categorical distribution for classification ('smoother' corresponds to the remaining output neurons)
-        # no unsqueeze() because out[:, 1:].size() is already = (len_trajectory, n_smoother)
         distr2 = pt.distributions.Categorical(out[:, 1:])
 
         # in case of 'interpolateCorrection', we get 1 prob for each point in trajectory
-        log_p1 = distr1.log_prob(actions[:, 0].unsqueeze(-1))
+        log_p1 = distr1.log_prob(actions[:, 0])
 
-        # else or out tensor is already 2D, so we don't need to unsqueeze, otherwise the distr has 1 dim too much,
-        # size(out) = [len_traj, n_smoother], size(actions) = [len_traj, 1]
-        log_p2 = distr2.log_prob(actions[:, 1]).unsqueeze(-1)
+        # in case of 'smoother'
+        log_p2 = distr2.log_prob(actions[:, 1])
 
-        # merge the log-probs & entropies
-        log_p = pt.cat([log_p1, log_p2], dim=1)
-        entropies = pt.cat([distr1.entropy(), distr2.entropy().unsqueeze(-1)], dim=1)
-
-        return log_p.sum(dim=1), entropies.sum(dim=1)
+        return log_p1, log_p2, distr1.entropy(), distr2.entropy()
 
 
 class FCValue(pt.nn.Module):
@@ -113,8 +106,8 @@ class FCValue(pt.nn.Module):
         self._layers.append(pt.nn.Linear(self._n_states, self._n_neurons))
         if self._n_layers > 1:
             for hidden in range(self._n_layers - 1):
-                self._layers.append(pt.nn.Linear(
-                    self._n_neurons, self._n_neurons))
+                self._layers.append(pt.nn.Linear(self._n_neurons, self._n_neurons))
+                self._layers.append(pt.nn.LayerNorm(self._n_neurons))
         self._layers.append(pt.nn.Linear(self._n_neurons, 1))
 
     def forward(self, x: pt.Tensor) -> pt.Tensor:
