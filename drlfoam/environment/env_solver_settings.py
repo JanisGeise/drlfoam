@@ -73,14 +73,7 @@ class GAMGSolverSettings(Environment):
             # of the base case. We want to interpolate the dt of the base case on the dt of the trajectory
             t_cpu_base = pt.from_numpy(np.interp(dt, self._t_base[:, 0], self._t_base[:, 1]))
 
-        # scale with mean execution time per dt of the base case
-        # return (t_cpu_base - t_cpu) / pt.mean(t_cpu_base) * self._r1
-
-        # duration to compute the trajectory for normalization maybe better if multiple envs of different complexity
-        # should be combined in PPO-training routine. r1 = 100 in order to have rewards in a range of [0, 1]
-        # return (t_cpu_base - t_cpu) / t_traj * self._r1
-
-        # TEST new reward fct
+        # new reward fct
         return t_cpu_base / t_cpu
 
     @property

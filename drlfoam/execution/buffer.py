@@ -61,9 +61,8 @@ class Buffer(ABC):
 
     def reset(self):
         # sample a start time for each copy based on all available start times from the base case in order to
-        # increase variance while keeping the trajectory length & run times low, all times have the same probability,
-        # ignore the end time folder
-        start_times = sorted(map(float, get_time_folders(join(self._base_env.path, "processor0"))))[:-1]
+        # increase variance while keeping the trajectory length & run times low, all times have the same probability
+        start_times = sorted(map(float, get_time_folders(join(self._base_env.path, "processor0"))))
 
         # initialize counter for counting how often which start time was already sampled,
         # ones because weights =  1 / counter
@@ -95,10 +94,9 @@ class Buffer(ABC):
         # sample some start times multiple times. Here all valid start points are taken, because we can't use the last
         # N starting points (see comment above)
         avail_t_start = len([i for i in max_t if i > 0])
-
         if avail_t_start < self._buffer_size:
             # make sure all available starting points are sampled at least once
-            idx1 = pt.multinomial(weights, avail_t_start)
+            idx1 = pt.tensor(range(avail_t_start))
 
             # then sample the remaining starting points
             idx2 = pt.multinomial(weights, self._buffer_size - avail_t_start, replacement=True)
@@ -112,7 +110,9 @@ class Buffer(ABC):
             # overwrite the idx with the sampled starting points, because the current idx is unique
             idx = pt.cat([idx1, idx2])
         else:
-            idx = pt.multinomial(weights, self._buffer_size)
+            # idx = pt.multinomial(weights, self._buffer_size)
+            # in case we don't have a large enough buffer, then disable the random sampling and just take the first N
+            idx = pt.tensor(range(self._buffer_size))
 
             # update the counter
             self._counter[idx] += 1
