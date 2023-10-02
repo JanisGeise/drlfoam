@@ -14,7 +14,7 @@ import torch as pt
 from .environment import Environment
 from ..constants import TESTCASE_PATH, DEFAULT_TENSOR_TYPE
 from ..utils import (check_pos_int, check_pos_float, replace_line_in_file,
-                     get_time_folders, get_latest_time, replace_line_latest)
+                     get_time_folders, get_latest_time, replace_line_latest, fetch_line_from_file)
 
 
 pt.set_default_tensor_type(DEFAULT_TENSOR_TYPE)
@@ -261,8 +261,11 @@ class GAMGSolverSettings(Environment):
         # convert to tensor in order to do computations later easier
         self._t_base = pt.tensor(self._t_base.values)
         
-        # check if the time step is const. or based on Courant number, therefore crete evenly spaced tensor based on the
-        # loaded dt and check if they are the same, if not then we don't have a const. dt,
-        # rtol=1e-12 << dt to make sure there are no round-off errors when comparing to the tmp tensor
-        tmp = pt.linspace(self._t_base[0, 0], self._t_base[-1, 0], self._t_base.size()[0])
-        self._const_dt = True if pt.allclose(tmp, self._t_base[:, 0], rtol=1e-12) else False
+        # check if the time step is const. or based on Courant number
+        var_dt = fetch_line_from_file(join(self._path, "system", "controlDict"), "adjustTimeStep ")
+
+        # if the command 'adjustTimeStep' is present, check if it is set to 'on' or 'off'
+        var_dt = var_dt.split(" ")[-1].split(";")[0] if var_dt is not None else var_dt
+
+        # set the flag for const. dt accordingly
+        self._const_dt = False if var_dt is not None and var_dt == "on" else True

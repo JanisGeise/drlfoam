@@ -87,7 +87,6 @@ class PPOAgent(Agent):
         log_p1_old = pt.cat(log_p1_old)
         log_p2_old = pt.cat(log_p2_old)
 
-        # TODO: not sure if adding is allowed / makes sense since it comes from different distributions
         log_p_old = log_p1_old + log_p2_old
 
         # compute returns and GAES
@@ -107,7 +106,6 @@ class PPOAgent(Agent):
             log_p1_new, log_p2_new, entropy1, entropy2 = self._policy.predict(states_wf, actions_wf)
 
             # add log_p and entropies
-            # TODO: not sure if adding is allowed / makes sense since it comes from different distributions
             log_p_new = log_p1_new + log_p2_new
             entropy = entropy1 + entropy2
 
