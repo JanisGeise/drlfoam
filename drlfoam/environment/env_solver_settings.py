@@ -60,7 +60,7 @@ class GAMGSolverSettings(Environment):
         self._n_outputs = 7             # output neurons for policy network
         self._policy = "policy.pt"
 
-    def _reward(self, t_cpu: pt.Tensor, dt: pt.Tensor, t_traj: pt.Tensor) -> pt.Tensor:
+    def _reward(self, t_cpu: pt.Tensor, dt: pt.Tensor) -> pt.Tensor:
         # if the time step is const., we can directly compute the difference
         if self._const_dt:
             # determine the start idx of the dt of the base case from which the current trajectory is starting
@@ -73,7 +73,10 @@ class GAMGSolverSettings(Environment):
             # of the base case. We want to interpolate the dt of the base case on the dt of the trajectory
             t_cpu_base = pt.from_numpy(np.interp(dt, self._t_base[:, 0], self._t_base[:, 1]))
 
-        # new reward fct
+        # new reward fct -> clamp to account for slow / busy nodes on HPC. on local machine the ratio default solver
+        # settings to the fastest settings ~0.7 and default to fastest ~1.3 (both envs), with safety margin -> clamp
+        # rewards at +-50%
+        # return (t_cpu_base / t_cpu).clamp(0.5, 1.5)
         return t_cpu_base / t_cpu
 
     @property
@@ -200,9 +203,9 @@ class GAMGSolverSettings(Environment):
             # convert the and scale convergence rates etc (compare to agentSolverSettings.C, predictSettings())
             # keys = ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min", "p_ratio_iter", "p_ratio_pimple_iters"]
             residuals = pt.from_numpy(residuals[residuals.keys()].values)
-            residuals[:, 0] = (-residuals[:, 0].log() - 1) / 10
+            residuals[:, 0] = (pt.sigmoid(residuals[:, 0]) - 0.5) / 5e-4
             residuals[:, 1] = (pt.sigmoid(residuals[:, 1]) - 0.5) / 1.5e-4
-            residuals[:, 2] = (-residuals[:, 2].log() - 1) / 10
+            residuals[:, 2] = (pt.sigmoid(residuals[:, 2]) - 0.5) / 8e-4
             residuals[:, 3] = (pt.sigmoid(residuals[:, 3]) - 0.5) / 2e-5
 
             # the time stuff is written out every as batch n time steps, so if OF crashes then we need to make sure the
@@ -225,7 +228,7 @@ class GAMGSolverSettings(Environment):
             # prob0 corresponds to 'interpolateCorrection', all other probs to smoother
             obs["probability"] = pt.stack([pt.from_numpy(tr[f"prob{i}"].values) for i in range(self._n_outputs)],
                                           dim=1)[:idx, :]
-            obs["rewards"] = self._reward(obs["t_per_dt"], obs["t"], obs["t_cumulative"][-1])
+            obs["rewards"] = self._reward(obs["t_per_dt"], obs["t"])
 
             return obs
 
