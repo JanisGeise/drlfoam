@@ -75,19 +75,8 @@ class PPOAgent(Agent):
                rewards: List[pt.Tensor]):
         values = [self._value(s).detach() for s in states]
 
-        # compute log_p for all but the final experience tuple, for each loss function, at the moment:
-        # 1. binary classification (log_p1_old) & 2. classification (log_p2_old)
-        log_p1_old, log_p2_old = [], []
-        for s, a in zip(states, actions):
-            pred1, pred2, _, _ = self._policy.predict(s[:-1], a[:-1])
-            log_p1_old.append(pred1.detach())
-            log_p2_old.append(pred2.detach())
-
-        # cat to a single tensor
-        log_p1_old = pt.cat(log_p1_old)
-        log_p2_old = pt.cat(log_p2_old)
-
-        log_p_old = log_p1_old + log_p2_old
+        # compute log_p for all but the final experience tuple
+        log_p_old = pt.cat([self._policy.predict(s[:-1], a[:-1])[0].detach() for s, a in zip(states, actions)])
 
         # compute returns and GAES
         returns = pt.cat([compute_returns(r, self._gamma) for r in rewards])
@@ -103,11 +92,7 @@ class PPOAgent(Agent):
         p_loss_, e_loss_, kl_ = [], [], []
         for e in range(self._policy_epochs):
             # compute loss and update weights
-            log_p1_new, log_p2_new, entropy1, entropy2 = self._policy.predict(states_wf, actions_wf)
-
-            # add log_p and entropies
-            log_p_new = log_p1_new + log_p2_new
-            entropy = entropy1 + entropy2
+            log_p_new, entropy = self._policy.predict(states_wf, actions_wf)
 
             # compute policy & entropy loss
             p_ratio = (log_p_new - log_p_old).exp()
@@ -125,8 +110,7 @@ class PPOAgent(Agent):
 
             # check KL-divergence
             with pt.no_grad():
-                log_p1, log_p2, _, _ = self._policy.predict(states_wf, actions_wf)
-                log_p = log_p1 + log_p2
+                log_p, _ = self._policy.predict(states_wf, actions_wf)
                 kl = (log_p_old - log_p).mean()
                 kl_.append(kl.item())
                 if kl.item() > self._policy_kl_stop:

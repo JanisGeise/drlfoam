@@ -26,9 +26,7 @@ def _parse_cpu_times(path: str) -> DataFrame:
 
 
 def _parse_residuals(path: str) -> DataFrame:
-    # names = ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min", "p_sum_iters", "p_max_iters", "p_pimple_iters"]
     names = ["p_initial", "p_rate_median", "p_rate_max", "p_rate_min", "p_ratio_iter", "p_ratio_pimple_iters"]
-    # residuals = read_csv(path, sep="\t", comment="#", header=None, names=names, usecols=range(2, 9))
     residuals = read_csv(path, sep="\t", comment="#", header=None, names=names, usecols=range(2, 8))
 
     return residuals
@@ -44,7 +42,7 @@ class GAMGSolverSettings(Environment):
     def __init__(self, r1: float = 100.0, r2: float = 1.0):
         super(GAMGSolverSettings, self).__init__(
             join(TESTCASE_PATH, "cylinder2D"), "Allrun.pre",
-            "Allrun", "Allclean", mpi_ranks=2, n_states=6, n_actions=2, n_output=7
+            "Allrun", "Allclean", mpi_ranks=2, n_states=6, n_actions=3, n_output=32
         )
         self._const_dt = None
         self._t_base = None
@@ -56,8 +54,8 @@ class GAMGSolverSettings(Environment):
         self._control_interval = 0.01
         self._train = True
         self._seed = 0
-        self._action_bounds = [0, 6]    # not used because so far we don't have constraints
-        self._n_outputs = 7             # output neurons for policy network
+        self._action_bounds = [0, 32]    # not used because so far we don't have constraints
+        self._n_outputs = 32             # output neurons for policy network
         self._policy = "policy.pt"
 
     def _reward(self, t_cpu: pt.Tensor, dt: pt.Tensor) -> pt.Tensor:
@@ -73,10 +71,6 @@ class GAMGSolverSettings(Environment):
             # of the base case. We want to interpolate the dt of the base case on the dt of the trajectory
             t_cpu_base = pt.from_numpy(np.interp(dt, self._t_base[:, 0], self._t_base[:, 1]))
 
-        # new reward fct -> clamp to account for slow / busy nodes on HPC. on local machine the ratio default solver
-        # settings to the fastest settings ~0.7 and default to fastest ~1.3 (both envs), with safety margin -> clamp
-        # rewards at +-50%
-        # return (t_cpu_base / t_cpu).clamp(0.5, 1.5)
         return t_cpu_base / t_cpu
 
     @property

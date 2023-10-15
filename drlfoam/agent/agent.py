@@ -51,7 +51,6 @@ class FCPolicy(pt.nn.Module):
         self._last_layer = pt.nn.Linear(self._n_neurons, self._n_output)
 
     def forward(self, x: pt.Tensor) -> pt.Tensor:
-        # print("INPUT SHAPE = ", x.size())
         for layer in self._layers:
             x = self._activation(layer(x))
 
@@ -60,20 +59,21 @@ class FCPolicy(pt.nn.Module):
 
         # use the remaining output neurons for classification for smoother, all probabilities add up to 1
         # transpose because dim 0 can be different when cat (bin_choice & classification), but here dim 1 is different
-        classification = pt.nn.functional.softmax(self._last_layer(x)[:, 1:], dim=1).transpose(0, 1)
+        classification = pt.nn.functional.softmax(self._last_layer(x)[:, 1:7], dim=1).transpose(0, 1)
 
-        # print("EXPECTED OUTPUT SIZE: ", pt.nn.functional.softmax(self._last_layer(x), dim=1).size(), "\n")
+        # classification for 'nCellsInCoarsestLevel'
+        classification2 = pt.nn.functional.softmax(self._last_layer(x)[:, 7:], dim=1).transpose(0, 1)
 
-        # the output size of pt.cat([bin_choice,  classification], dim=0) = [7, len_traj],
-        # but we want [len_traj, 7], so transpose
-        return pt.cat([bin_choice,  classification], dim=0).transpose(0, 1)
+        # the output size of pt.cat([bin_choice,  classification], dim=0) = [n_outputs, len_traj],
+        # but we want [len_traj, n_outputs], so transpose
+        return pt.cat([bin_choice,  classification, classification2], dim=0).transpose(0, 1)
 
     @pt.jit.ignore
     def _scale(self, actions: pt.Tensor) -> pt.Tensor:
         return (actions - self._action_min) / (self._action_max - self._action_min)
 
     @pt.jit.ignore
-    def predict(self, states: pt.Tensor, actions: pt.Tensor) -> Tuple[pt.Tensor, pt.Tensor, pt.Tensor, pt.Tensor]:
+    def predict(self, states: pt.Tensor, actions: pt.Tensor) -> Tuple[pt.Tensor, pt.Tensor]:
         # size(out) = [len_traj, n_probs], size(actions) = [len_traj, n_actions]
         out = self.forward(states)
 
@@ -81,15 +81,21 @@ class FCPolicy(pt.nn.Module):
         distr1 = pt.distributions.Bernoulli(out[:, 0])
 
         # categorical distribution for classification ('smoother' corresponds to the remaining output neurons)
-        distr2 = pt.distributions.Categorical(out[:, 1:])
+        distr2 = pt.distributions.Categorical(out[:, 1:7])
+
+        # categorical distribution for 'nCellsInCoarsestLevel'
+        distr3 = pt.distributions.Categorical(out[:, 7:])
 
         # in case of 'interpolateCorrection', we get 1 prob for each point in trajectory
         log_p1 = distr1.log_prob(actions[:, 0])
 
-        # in case of 'smoother'
+        # 'smoother'
         log_p2 = distr2.log_prob(actions[:, 1])
 
-        return log_p1, log_p2, distr1.entropy(), distr2.entropy()
+        # 'nCellsInCoarsestLevel'
+        log_p3 = distr3.log_prob(actions[:, 2])
+
+        return log_p1 + log_p2 + log_p3, distr1.entropy() + distr2.entropy() + distr3.entropy()
 
 
 class FCValue(pt.nn.Module):

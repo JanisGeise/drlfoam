@@ -110,9 +110,9 @@ class Buffer(ABC):
             # overwrite the idx with the sampled starting points, because the current idx is unique
             idx = pt.cat([idx1, idx2])
         else:
-            # idx = pt.multinomial(weights, self._buffer_size)
+            idx = pt.multinomial(weights, self._buffer_size)
             # in case we don't have a large enough buffer, then disable the random sampling and just take the first N
-            idx = pt.tensor(range(self._buffer_size))
+            # idx = pt.tensor(range(self._buffer_size))
 
             # update the counter
             self._counter[idx] += 1
