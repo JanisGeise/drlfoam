@@ -18,12 +18,13 @@ from drlfoam.agent import FCPolicy
 # combination of 'interpolateCorrection' and 'smoother', n_actions not used anymore, everything is defined with n_output
 # policy = FCPolicy(n_states=6, n_actions=2, action_min=pt.zeros(1,), action_max=pt.ones(1,)*6, n_output=7)
 
-# combination of 'interpolateCorrection', 'smoother' & 'nCellsInCoarsestLevel'
-policy = FCPolicy(n_states=6, n_actions=3, action_min=pt.zeros(1,), action_max=pt.ones(1,)*32, n_output=32)
+# combination of 'interpolateCorrection', 'smoother' & 'nFinestSweeps'
+policy = FCPolicy(n_states=6, n_actions=3, action_min=pt.zeros(1,), action_max=pt.ones(1,)*16, n_output=17)
 
 # test policy output -> choose randomly 6 features as iinput
 # prediction_test = policy.forward(pt.rand((1, 6)))
 
 script = pt.jit.script(policy)
+script.save(join("/media/janis/Daten/Masterarbeit/learning_of_optimized_multigrid_solver_settings_for_CFD_applications/test_cases/test_io", "policy.pt"))
 script.save(join("..", "openfoam", "test_cases", "cylinder2D", "policy.pt"))
 script.save(join("..", "openfoam", "test_cases", "weirOverflow", "policy.pt"))

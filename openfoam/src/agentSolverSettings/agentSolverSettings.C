@@ -186,8 +186,7 @@ Foam::functionObjects::agentSolverSettings::agentSolverSettings
 
     // taken from Tomislav Maric (line 135, 136):
     // https://gitlab.com/tmaric/openfoam-ml/-/blob/master/src/aiSolutionControl/aiSolutionControl/aiSolutionControl.C?ref_type=heads#L65
-    // pimpleControl(const_cast<fvMesh&>(fvMeshFunctionObject::mesh_)),
-    // mesh_(fvMeshFunctionObject::mesh_),           // NOT WORKING, ambiguity error for mesh_()
+    pimpleControl(const_cast<fvMesh&>(fvMeshFunctionObject::mesh_)),
 
     writeFile(obr_, name, typeName, dict),
     fieldSet_(fvMeshFunctionObject::mesh_),
@@ -197,7 +196,8 @@ Foam::functionObjects::agentSolverSettings::agentSolverSettings
     policy_name_(dict.get<word>("policy")),
     policy_(torch::jit::load(policy_name_)),
     seed_(dict.get<int>("seed")),
-    gen_(seed_)
+    gen_(seed_),
+    mesh_(fvMeshFunctionObject::mesh_)      // taken from Code Tomislav
 {
     read(dict);
 }
@@ -334,9 +334,9 @@ void Foam::functionObjects::agentSolverSettings::predictSettings()
         std::vector<torch::jit::IValue> policyFeatures{features};
         torch::Tensor policy_out = policy_.forward(policyFeatures).toTensor();
 
-        // we have 32 output neurons: 0 = 'interpolateCorrection', 1...6 = 'smoother', 7...32 = 'nCellsInCoarsestLevel'
+        // we have 32 output neurons: 0 = 'interpolateCorrection', 1...6 = 'smoother', 7...16 = 'nFinestSweeps'
         std::vector<double> input_smoother;
-        std::vector<double> input_nCellsInCoarsestLevel;
+        std::vector<double> input_nFinestSweeps;
         for(label n=1; n < policy_out.sizes()[1]; n++)
             if (n < 7)
             {
@@ -344,7 +344,7 @@ void Foam::functionObjects::agentSolverSettings::predictSettings()
             }
             else
             {
-                input_nCellsInCoarsestLevel.push_back(policy_out[0][n].item<double>());
+                input_nFinestSweeps.push_back(policy_out[0][n].item<double>());
             }
 
         if (train_)
@@ -352,13 +352,13 @@ void Foam::functionObjects::agentSolverSettings::predictSettings()
             // the 1st item is for sampling from Bernoulli-distr. for 'interpolateCorrection'
             std::bernoulli_distribution distr1(policy_out[0][0].item<double>());
 
-            // use a discrete distribution in order to sample the action for 'smoother' and 'nCellsInCoarsestLevel'
+            // use a discrete distribution in order to sample the action for 'smoother' and 'nFinestSweeps'
             std::discrete_distribution<> distr2(input_smoother.begin(), input_smoother.end());
-            std::discrete_distribution<> distr3(input_nCellsInCoarsestLevel.begin(), input_nCellsInCoarsestLevel.end());
+            std::discrete_distribution<> distr3(input_nFinestSweeps.begin(), input_nFinestSweeps.end());
 
             action_[0] = distr1(gen_);          // action for 'interpolateCorrection'
             action_[1] = distr2(gen_);          // action for 'smoother'
-            action_[2] = distr3(gen_);          // action for 'nCellsInCoarsestLevel'
+            action_[2] = distr3(gen_);          // action for 'nFinestSweeps'
         }
 
         else
@@ -373,9 +373,9 @@ void Foam::functionObjects::agentSolverSettings::predictSettings()
                 action_[0] = 1;
             }
 
-            // take the smoother and nCellsInCoarsestLevel which have the highest probabilities
+            // take the smoother and nFinestSweeps which have the highest probabilities
             action_[1] = torch::argmax(torch::tensor(input_smoother)).item<int>();
-            action_[2] = torch::argmax(torch::tensor(input_nCellsInCoarsestLevel)).item<int>();
+            action_[2] = torch::argmax(torch::tensor(input_nFinestSweeps)).item<int>();
         }
 
         // save the policy output, the execution time per time step is logged using the 'timeInfo' function object
@@ -405,36 +405,37 @@ void Foam::functionObjects::agentSolverSettings::modifySolverSettingsDict(const 
         std::vector<word> smoother = {"FDIC", "DIC", "DICGaussSeidel", "symGaussSeidel", "nonBlockingGaussSeidel",
                                       "GaussSeidel"};
 
-        std::vector<word> nCellsInCoarsestLevel;
-        for (label n=10; n <= 250; n+=10)
+        std::vector<word> nFinestSweeps;
+        for (label n=1; n <= 10; n++)
         {
-            nCellsInCoarsestLevel.push_back(Foam::name(n));
+            nFinestSweeps.push_back(Foam::name(n));
         }
 
         // print the new settings to log file
         Info << "\t\t\t\t\t\tNew GAMG settings: \n\t\t\t\t\t\t------------------\n\t\t\t\t\t\t\t"
              << "'interpolateCorrection' = " << interpolateCorrection << "\n\t\t\t\t\t\t\t"
              << "'smoother'              = " << smoother[action_[1]] << "\n\t\t\t\t\t\t\t"
-             << "'nCellsInCoarsestLevel' = " << nCellsInCoarsestLevel[action_[2]] << "\n\n" << endl;
+             << "'nFinestSweeps'         = " << nFinestSweeps[action_[2]] << "\n\n" << endl;
 
-        /* taken from Tomislav Maric (line 135, 136):
+        /* --------------------------------   NOT WORKING YET   -------------------------------
+        // taken from Tomislav Maric (line 135, 136):
         // https://gitlab.com/tmaric/openfoam-ml/-/blob/master/src/aiSolutionControl/aiSolutionControl/aiSolutionControl.C?ref_type=heads#L65
         // ----- START CODE Tomislav -----
         const fvSolution& fvSolutionDict (fvMeshFunctionObject::mesh_);
         fvSolution& fvSolutionRef = const_cast<fvSolution&>(fvSolutionDict);
         auto& solverDict = fvSolutionRef.subDict("solvers");
-        // ----- END CODE Tomislav -----
+        // ----- END CODE Tomislav ----- */
 
-        // try using IO-Object for writing (AUTO_WRITE only works if simulation is not decomposed and even then OpenFoam
-        // doesn't recognize the file as modified and doesn't update the settings)
+        /* try using IO-Object for writing
         IOdictionary fvSolutionDict
         (
           IOobject
            (
             "fvSolution",
-            mesh_.time().system(),
-            mesh_,
-            IOobject::NO_READ,
+            fvMeshFunctionObject::mesh_.time().system(),
+            fvMeshFunctionObject::mesh_,
+            // read option is the issue: works only if not decomposed, else MPI error; other options don't work as well (although on Pstream::Master())
+            IOobject::MUST_READ,
             IOobject::AUTO_WRITE
            )
         );
@@ -447,12 +448,19 @@ void Foam::functionObjects::agentSolverSettings::modifySolverSettingsDict(const 
         // declared as const Foam::dictionary, we can't modify it directly, so we have to save everything and write it back
         // to the file after modifications
         dictionary& solverDict = fvSolutionDict.subDict("solvers");
+        */
 
+        /*
         // update the dict, for now only with the 'interpolateCorrection' parameter (set is altering the settings internally)
         // the values which are already present are overwritten by calling the set() method
         solverDict.subDict(fieldName).set("interpolateCorrection", interpolateCorrection);
         solverDict.subDict(fieldName).set("smoother", smoother[action_[1]]);
         solverDict.subDict(fieldName).set("nCellsInCoarsestLevel", nCellsInCoarsestLevel[action_[2]]);
+
+        // update the pFinal dict accordingly
+        solverDict.subDict(fieldName + "Final").set("interpolateCorrection", interpolateCorrection);
+        solverDict.subDict(fieldName + "Final").set("smoother", smoother[action_[1]]);
+        solverDict.subDict(fieldName + "Final").set("nCellsInCoarsestLevel", nCellsInCoarsestLevel[action_[2]]);
 
         // replace the original solvers dict with the updated solver settings
         // fvSolutionDict.set("solvers", solverDict);
@@ -460,12 +468,7 @@ void Foam::functionObjects::agentSolverSettings::modifySolverSettingsDict(const 
         // write the new solver settings to file
         // fvSolutionDict.regIOobject::write();
 
-        // check if the smoother was successfully modified -> always 1 dt delay, because re-reading is executed prior FO
-        Info << "[DEBUG] current smoother: " <<
-                 fvMeshFunctionObject::mesh_.lookupObject<IOdictionary>("fvSolution").subDict("solvers").subDict(fieldName).get<word>("smoother")
-                 << "\n" << endl;
-        */
-
+        // --------------------------------   END NOT WORKING YET   ------------------------------- */
         // tmp work-around:
         // for now, we only modify 'interpolateCorrection', 'smoother' & nCellsInCoarsestLevel, so just keep everything else const.
         const double relTol = fvMeshFunctionObject::mesh_.lookupObject<IOdictionary>("fvSolution").subDict("solvers").subDict(fieldName).get<double>("relTol");
@@ -477,7 +480,7 @@ void Foam::functionObjects::agentSolverSettings::modifySolverSettingsDict(const 
                                              "\t\ttolerance \t" + Foam::name(tol) + ";\n"
                                              "\t\trelTol \t" + Foam::name(relTol) + ";\n"
                                              "\t\tinterpolateCorrection \t" + interpolateCorrection + ";\n"
-                                             "\t\tnCellsInCoarsestLevel \t" + nCellsInCoarsestLevel[action_[2]] + ";\n"
+                                             "\t\tnFinestSweeps \t" + nFinestSweeps[action_[2]] + ";\n"
                                      "\t}\n";
         // update the fvSolution file
         writeFvSolutionFile(solverSettings, fieldName, 6);
