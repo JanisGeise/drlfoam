@@ -222,6 +222,27 @@ class GAMGSolverSettings(Environment):
             # prob0 corresponds to 'interpolateCorrection', all other probs to smoother
             obs["probability"] = pt.stack([pt.from_numpy(tr[f"prob{i}"].values) for i in range(self._n_outputs)],
                                           dim=1)[:idx, :]
+
+            # get the executeInterval for the agent of the controlDict
+            every = int(fetch_line_from_file(join(self.path, "system", "controlDict"),
+                                             "executeInterval").split(" ")[-1].strip(";\n"))
+
+            # resort the exec times per dt, so that we have all N dt in between 2 executions of the agent, we can't use
+            # [::every], because this leads to tensors of unequal sizes (trajectory length % every != 0)
+            t_per_n_dt, i = [], 0
+            while i < obs["t_per_dt"].size()[0]:
+                tmp = 0
+                for j in range(every):
+                    tmp += obs["t_per_dt"][i]
+                t_per_n_dt.append(tmp)
+                i += every
+
+            # overwrite the time and dt for the observations file
+            obs["t_cumulative"] = obs["t_cumulative"][::every]
+            obs["t"] = obs["t"][::every]
+            obs["t_per_dt"] = pt.tensor(t_per_n_dt)
+
+            # compute the rewards
             obs["rewards"] = self._reward(obs["t_per_dt"], obs["t"])
 
             return obs
@@ -257,6 +278,25 @@ class GAMGSolverSettings(Environment):
 
         # convert to tensor in order to do computations later easier
         self._t_base = pt.tensor(self._t_base.values)
+
+        # get the executeInterval for the agent of the controlDict
+        every = int(fetch_line_from_file(join(self.path, "system", "controlDict"),
+                                         "executeInterval").split(" ")[-1].strip(";\n"))
+
+        # resort the exec times per dt, so that we have all N dt in between 2 executions of the agent
+        t_per_n_dt, i = [], 0
+        while i < self._t_base.size()[0]:
+            tmp = 0
+            for j in range(every):
+                tmp += self._t_base[i, 1]
+            t_per_n_dt.append(tmp)
+            i += every
+
+        # convert to tensor
+        t_per_n_dt = pt.tensor(t_per_n_dt).unsqueeze(-1)
+
+        # replace the original tensor along with the new dt
+        self._t_base = pt.cat([self._t_base[::every, 0].unsqueeze(-1), t_per_n_dt], dim=1)
         
         # check if the time step is const. or based on Courant number
         var_dt = fetch_line_from_file(join(self._path, "system", "controlDict"), "adjustTimeStep ")
