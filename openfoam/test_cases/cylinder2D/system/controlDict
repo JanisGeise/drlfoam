@@ -69,6 +69,10 @@ functions
         libs            (utilityFunctionObjects);
         timeStart       0;
         perTimeStep     yes;
+        executeControl      timeStep;
+        executeInterval     2;
+        writeControl        timeStep;
+        writeInterval       2;
     }
 
     forces

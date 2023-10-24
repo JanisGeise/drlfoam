@@ -223,24 +223,15 @@ class GAMGSolverSettings(Environment):
             obs["probability"] = pt.stack([pt.from_numpy(tr[f"prob{i}"].values) for i in range(self._n_outputs)],
                                           dim=1)[:idx, :]
 
-            # get the executeInterval for the agent of the controlDict
-            every = int(fetch_line_from_file(join(self.path, "system", "controlDict"),
-                                             "executeInterval").split(" ")[-1].strip(";\n"))
+            # the cumulative CPU time of the 1st dt = time per dt
+            t_per_dt = [obs["t_cumulative"][0]]
 
-            # resort the exec times per dt, so that we have all N dt in between 2 executions of the agent, we can't use
-            # [::every], because this leads to tensors of unequal sizes (trajectory length % every != 0)
-            t_per_n_dt, i = [], 0
-            while i < obs["t_per_dt"].size()[0]:
-                tmp = 0
-                for j in range(every):
-                    tmp += obs["t_per_dt"][i]
-                t_per_n_dt.append(tmp)
-                i += every
+            # for all subsequent dt -> t per dt = difference in cumulative CPU time
+            for i in range(obs["t_cumulative"].size()[0] - 1):
+                t_per_dt.append(obs["t_cumulative"][i + 1] - obs["t_cumulative"][i])
 
-            # overwrite the time and dt for the observations file
-            obs["t_cumulative"] = obs["t_cumulative"][::every]
-            obs["t"] = obs["t"][::every]
-            obs["t_per_dt"] = pt.tensor(t_per_n_dt)
+            # replace the original tensor with the new dt
+            obs["t_per_dt"] = pt.tensor(t_per_dt)
 
             # compute the rewards
             obs["rewards"] = self._reward(obs["t_per_dt"], obs["t"])
@@ -250,9 +241,6 @@ class GAMGSolverSettings(Environment):
         except Exception as e:
             logging.warning("Could not parse observations: ", e)
             logging.info(f"start time of {self.path} was: t_start = {self._start_time}")
-            exit()
-        # finally:
-        #     return obs
 
     def reset(self):
         # if we are not in base case, then there should be a log-file from the solver used (e.g. interFoam / pimpleFoam)
@@ -274,29 +262,19 @@ class GAMGSolverSettings(Environment):
         # if counter is None, then we didn't load the CPU times and time steps of base case as well, so load them
         # load the CPU times per time step and physical time of the base case as reference
         self._t_base = _parse_cpu_times(glob(join(self._path, "postProcessing", "time", "*", "timeInfo.dat"))[0])
-        self._t_base.drop("t_tot", axis=1, inplace=True)
 
         # convert to tensor in order to do computations later easier
         self._t_base = pt.tensor(self._t_base.values)
 
-        # get the executeInterval for the agent of the controlDict
-        every = int(fetch_line_from_file(join(self.path, "system", "controlDict"),
-                                         "executeInterval").split(" ")[-1].strip(";\n"))
+        # the cumulative CPU time of the 1st dt = time per dt
+        t_per_dt = [self._t_base[0, 1]]
 
-        # resort the exec times per dt, so that we have all N dt in between 2 executions of the agent
-        t_per_n_dt, i = [], 0
-        while i < self._t_base.size()[0]:
-            tmp = 0
-            for j in range(every):
-                tmp += self._t_base[i, 1]
-            t_per_n_dt.append(tmp)
-            i += every
+        # for all subsequent dt -> t per dt = difference in cumulative CPU time
+        for i in range(self._t_base.size()[0] - 1):
+            t_per_dt.append(self._t_base[i + 1, 1] - self._t_base[i, 1])
 
-        # convert to tensor
-        t_per_n_dt = pt.tensor(t_per_n_dt).unsqueeze(-1)
-
-        # replace the original tensor along with the new dt
-        self._t_base = pt.cat([self._t_base[::every, 0].unsqueeze(-1), t_per_n_dt], dim=1)
+        # replace the original tensor with the new dt
+        self._t_base = pt.cat([self._t_base[:, 0].unsqueeze(-1), pt.tensor(t_per_dt).unsqueeze(-1)], dim=1)
         
         # check if the time step is const. or based on Courant number
         var_dt = fetch_line_from_file(join(self._path, "system", "controlDict"), "adjustTimeStep ")
