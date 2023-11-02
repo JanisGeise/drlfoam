@@ -206,7 +206,8 @@ class RunTrainingInDebugger:
     """
 
     def __init__(self, episodes: int = 2, runners: int = 2, buffer: int = 2, finish: float = 0.8,
-                 seed: int = 0, timeout: int = 1e15, out_dir: str = "examples/TEST", checkpoint: str = ""):
+                 seed: int = 0, timeout: int = 1e15, out_dir: str = "examples/TEST", checkpoint: str = "",
+                 simulation: str = "cylinder2D"):
         self.command = ". /usr/lib/openfoam/openfoam2206/etc/bashrc"
         self.output = out_dir
         self.iter = episodes
@@ -218,8 +219,7 @@ class RunTrainingInDebugger:
         self.manualSeed = seed
         self.timeout = timeout
         self.checkpoint = checkpoint
-        self.simulation = "cylinder2D"
-        # self.simulation = "weirOverflow"
+        self.simulation = simulation
 
     def set_openfoam_bashrc(self, path: str):
         system(f"sed -i '5i # source bashrc for openFOAM for debugging purposes\\n{self.command}' {path}/Allrun.pre")
@@ -250,10 +250,10 @@ if __name__ == "__main__":
         sys.path.insert(0, environ["WM_PROJECT_DIR"])
         chdir(BASE_PATH)
 
-        # test MB-DRL on local machine for cylinder2D
+        # test training on local machine for cylinder2D
         d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, seed=0, out_dir="examples/TEST", finish=0.8)
 
-        # test MB-DRL on local machine for weirOverflow
+        # test training on local machine for weirOverflow
         # d_args = RunTrainingInDebugger(episodes=100, runners=1, buffer=20, seed=0,
         #                                out_dir="examples/e100_r1_b20_f80_new_features_local", finish=81)
 

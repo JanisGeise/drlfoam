@@ -68,9 +68,9 @@ functions{
             train           true;
             seed            0;
             executeControl      timeStep;
-            executeInterval     2;
+            executeInterval     10;
             writeControl        timeStep;
-            writeInterval       2;
+            writeInterval       10;
     }
 
     // log the execution time per time step for reward function
@@ -81,9 +81,9 @@ functions{
         timeStart       0;
         perTimeStep     yes;
         executeControl      timeStep;
-        executeInterval     2;
+        executeInterval     10;
         writeControl        timeStep;
-        writeInterval       2;
+        writeInterval       10;
     }
 
     probes
