@@ -124,6 +124,7 @@ def main(args):
     else:
         # surfaceMountedCube
         end_time = 100
+
     # get number of subdomains
     n_domains = int(fetch_line_from_file(join(BASE_PATH, "openfoam", "test_cases", simulation, "system",
                                               "decomposeParDict"), "numberOfSubdomains").split(" ")[-1].strip(";\n"))

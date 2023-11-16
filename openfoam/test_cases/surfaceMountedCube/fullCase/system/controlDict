@@ -30,9 +30,9 @@ deltaT          0.002;
 
 writeControl    timeStep;
 
-writeInterval   100;
+writeInterval   1000;
 
-purgeWrite      5;
+purgeWrite      0;
 
 writeFormat     binary;
 
