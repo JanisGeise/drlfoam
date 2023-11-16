@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO)
 SIMULATION_ENVIRONMENTS = {
     "cylinder2D": GAMGSolverSettings,
     "weirOverflow": GAMGSolverSettings,
-    "surfaceMountedCube": GAMGSolverSettings
+    "mixerVesselAMI": GAMGSolverSettings
 }
 
 DEFAULT_CONFIG = {
@@ -55,7 +55,7 @@ DEFAULT_CONFIG = {
             "activation": pt.nn.functional.relu
         }
     },
-    "surfaceMountedCube": {
+    "mixerVesselAMI": {
         "policy_dict": {
             "n_layers": 2,
             "n_neurons": 64,
@@ -118,20 +118,15 @@ def main(args):
     # set end_time for base case depending on environment (if debug this will be overwritten by the finish parameter)
     if simulation == "weirOverflow":
         end_time = 81
-        n_cpu = fetch_line_from_file(join(BASE_PATH, "openfoam", "test_cases", simulation, "system",
-                                          "decomposeParDict"), "numberOfSubdomains")
     elif simulation == "cylinder2D":
         end_time = 0.8
-        n_cpu = fetch_line_from_file(join(BASE_PATH, "openfoam", "test_cases", simulation, "system",
-                                          "decomposeParDict"), "numberOfSubdomains")
     else:
-        # surfaceMountedCube, path to system dir differs
-        end_time = 100
-        n_cpu = fetch_line_from_file(join(BASE_PATH, "openfoam", "test_cases", simulation, "fullCase", "system",
-                                          "decomposeParDict"), "numberOfSubdomains")
+        # mixerVesselAMI
+        end_time = 10.25
 
     # get number of subdomains
-    n_domains = int(n_cpu.split(" ")[-1].strip(";\n"))
+    n_domains = int(fetch_line_from_file(join(BASE_PATH, "openfoam", "test_cases", simulation, "system",
+                                         "decomposeParDict"), "numberOfSubdomains").split(" ")[-1].strip(";\n"))
 
     # ensure reproducibility
     manual_seed(args.manualSeed)
@@ -170,8 +165,8 @@ def main(args):
         elif simulation == "cylinder2D":
             t_max = "01:00:00"
         else:
-            # standard config for surfaceMountedCube
-            t_max = "72:00:00"
+            # standard config for mixerVesselAMI
+            t_max = "96:00:00"
         config = SlurmConfig(
             n_tasks=n_domains, n_nodes=1, partition="standard", time=t_max,
             modules=["singularity/latest", "mpi/openmpi/4.1.1/gcc"], job_name="drl_train"

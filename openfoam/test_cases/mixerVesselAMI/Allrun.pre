@@ -1,0 +1,35 @@
+#!/bin/sh
+cd "${0%/*}" || exit                                # Run from this directory
+. ${DRL_BASE}/RunFunctions        # run functions
+#------------------------------------------------------------------------------
+
+mkdir -p constant
+
+# copy STL files from resources folder
+cp -rf geometry.orig/mixerVesselAMI constant/triSurface
+
+rm -rf 0
+
+runApplication blockMesh
+
+runApplication surfaceFeatureExtract
+
+runApplication snappyHexMesh -overwrite
+
+runApplication createBaffles -overwrite
+
+runApplication mergeOrSplitBaffles -split -overwrite
+
+# Copy fields after meshing to avoid the generation of unnecessary patch fields
+# restore0Dir
+cp -r 0.orig 0
+
+# Initialize alpha
+runApplication setFields
+
+runApplication decomposePar
+
+# run checkMesh
+runApplication checkMesh
+
+#------------------------------------------------------------------------------

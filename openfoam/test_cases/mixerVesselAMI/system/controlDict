@@ -1,0 +1,118 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+| =========                 |                                                 |
+| \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |
+|  \\    /   O peration     | Version:  v2206                                 |
+|   \\  /    A nd           | Website:  www.openfoam.com                      |
+|    \\/     M anipulation  |                                                 |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      controlDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+application     interFoam;
+
+startFrom       startTime;
+
+startTime       0;
+
+stopAt          endTime;
+
+endTime         10;
+
+deltaT          1e-4;
+
+writeControl    adjustable;
+
+writeInterval   0.25;
+
+purgeWrite      0;
+
+writeFormat     binary;
+
+writePrecision  6;
+
+writeCompression off;
+
+timeFormat      general;
+
+timePrecision   10;
+
+runTimeModifiable yes;
+
+adjustTimeStep  yes;
+
+maxCo           1.5;
+
+maxAlphaCo      1;
+
+maxDeltaT       1;
+
+
+// ************************************************************************* //
+
+functions
+{
+    // function object for computing the states and actions in order to predict the solver settings for GAMG
+    residuals
+        {
+            type            agentSolverSettings;
+            libs            ("${DRL_LIBBIN}/libAgentSolverSettings.so");
+            timeStart       42;
+            fields          (p_rgh);
+            policy          "policy.pt";
+            train           true;
+            seed            0;
+            executeControl      timeStep;
+            executeInterval     2;
+            writeControl        timeStep;
+            writeInterval       2;
+    }
+
+    // log the execution time per time step for reward function (in drlfoam) and post-processing
+    time
+    {
+        type            timeInfo;
+        libs            (utilityFunctionObjects);
+        timeStart       0;
+        perTimeStep     yes;
+        executeControl      timeStep;
+        executeInterval     2;
+        writeControl        timeStep;
+        writeInterval       2;
+    }
+
+    probes
+        {
+            type            probes;
+            libs            (sampling);
+            name            probes;
+            writeControl    timeStep;
+            writeInterval   1;
+            startTime       0.0;
+            fields          (U p, p_rgh);
+            fixedLocations  true;
+            interpolationScheme cell;
+
+            probeLocations
+            (
+                (0.0 0.22 0.0)
+                (0.0 0.22 0.1)
+                (0.0 0.22 0.2)
+                (0.0 0.22 0.3)
+                (0.0 0.22 0.4)
+                (0.0 0.22 0.5)
+                (0.0 0.22 0.6)
+                (0.0 0.22 0.7)
+                (0.0 0.22 0.8)
+                (0.0 0.22 0.9)
+                (0.0 0.22 1.0)
+
+            );
+            includeOutOfBounds  false;
+        }
+}
