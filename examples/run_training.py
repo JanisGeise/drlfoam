@@ -5,18 +5,17 @@ from glob import glob
 from time import time
 import logging
 import argparse
+import torch as pt
 
 from torch import manual_seed, cuda
 from shutil import copytree, rmtree
 from os import makedirs, environ, system, chdir, remove
 from os.path import join, exists
 
-from drlfoam import fetch_line_from_file
-
 BASE_PATH = environ.get("DRL_BASE", "")
 sys.path.insert(0, BASE_PATH)
 
-import torch as pt
+from drlfoam.utils import fetch_line_from_file
 from drlfoam.environment import GAMGSolverSettings
 from drlfoam.agent import PPOAgent
 from drlfoam.execution import LocalBuffer, SlurmBuffer, SlurmConfig
@@ -119,15 +118,20 @@ def main(args):
     # set end_time for base case depending on environment (if debug this will be overwritten by the finish parameter)
     if simulation == "weirOverflow":
         end_time = 81
+        n_cpu = fetch_line_from_file(join(BASE_PATH, "openfoam", "test_cases", simulation, "system",
+                                          "decomposeParDict"), "numberOfSubdomains")
     elif simulation == "cylinder2D":
         end_time = 0.8
+        n_cpu = fetch_line_from_file(join(BASE_PATH, "openfoam", "test_cases", simulation, "system",
+                                          "decomposeParDict"), "numberOfSubdomains")
     else:
-        # surfaceMountedCube
+        # surfaceMountedCube, path to system dir differs
         end_time = 100
+        n_cpu = fetch_line_from_file(join(BASE_PATH, "openfoam", "test_cases", simulation, "fullCase", "system",
+                                          "decomposeParDict"), "numberOfSubdomains")
 
     # get number of subdomains
-    n_domains = int(fetch_line_from_file(join(BASE_PATH, "openfoam", "test_cases", simulation, "system",
-                                              "decomposeParDict"), "numberOfSubdomains").split(" ")[-1].strip(";\n"))
+    n_domains = int(n_cpu.split(" ")[-1].strip(";\n"))
 
     # ensure reproducibility
     manual_seed(args.manualSeed)
