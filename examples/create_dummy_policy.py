@@ -25,6 +25,6 @@ policy = FCPolicy(n_states=6, n_actions=3, action_min=pt.zeros(1,), action_max=p
 # prediction_test = policy.forward(pt.rand((1, 6)))
 
 script = pt.jit.script(policy)
-script.save(join("/media/janis/Daten/Masterarbeit/learning_of_optimized_multigrid_solver_settings_for_CFD_applications/test_cases/test_io", "policy.pt"))
 script.save(join("..", "openfoam", "test_cases", "cylinder2D", "policy.pt"))
 script.save(join("..", "openfoam", "test_cases", "weirOverflow", "policy.pt"))
+script.save(join("..", "openfoam", "test_cases", "surfaceMountedCube", "policy.pt"))

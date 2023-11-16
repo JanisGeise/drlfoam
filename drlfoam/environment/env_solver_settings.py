@@ -39,10 +39,10 @@ def _parse_trajectory(path: str, n_outputs: int, n_actions: int) -> DataFrame:
 
 
 class GAMGSolverSettings(Environment):
-    def __init__(self, r1: float = 100.0, r2: float = 1.0):
+    def __init__(self, mpi_ranks: int, test_env: str, r1: float = 100.0, r2: float = 1.0):
         super(GAMGSolverSettings, self).__init__(
-            join(TESTCASE_PATH, "cylinder2D"), "Allrun.pre",
-            "Allrun", "Allclean", mpi_ranks=2, n_states=6, n_actions=3, n_output=17
+            join(TESTCASE_PATH, test_env), "Allrun.pre",
+            "Allrun", "Allclean", mpi_ranks=mpi_ranks, n_states=6, n_actions=3, n_output=17
         )
         self._const_dt = None
         self._t_base = None

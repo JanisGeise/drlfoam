@@ -11,6 +11,8 @@ from shutil import copytree, rmtree
 from os import makedirs, environ, system, chdir, remove
 from os.path import join, exists
 
+from drlfoam import fetch_line_from_file
+
 BASE_PATH = environ.get("DRL_BASE", "")
 sys.path.insert(0, BASE_PATH)
 
@@ -25,7 +27,8 @@ logging.basicConfig(level=logging.INFO)
 
 SIMULATION_ENVIRONMENTS = {
     "cylinder2D": GAMGSolverSettings,
-    "weirOverflow": GAMGSolverSettings
+    "weirOverflow": GAMGSolverSettings,
+    "surfaceMountedCube": GAMGSolverSettings
 }
 
 DEFAULT_CONFIG = {
@@ -42,6 +45,18 @@ DEFAULT_CONFIG = {
         }
     },
     "weirOverflow": {
+        "policy_dict": {
+            "n_layers": 2,
+            "n_neurons": 64,
+            "activation": pt.nn.functional.relu
+        },
+        "value_dict": {
+            "n_layers": 2,
+            "n_neurons": 64,
+            "activation": pt.nn.functional.relu
+        }
+    },
+    "surfaceMountedCube": {
         "policy_dict": {
             "n_layers": 2,
             "n_neurons": 64,
@@ -102,7 +117,16 @@ def main(args):
     simulation = args.simulation
 
     # set end_time for base case depending on environment (if debug this will be overwritten by the finish parameter)
-    end_time = 0.8 if simulation == "cylinder2D" else 81
+    if simulation == "weirOverflow":
+        end_time = 81
+    elif simulation == "cylinder2D":
+        end_time = 0.8
+    else:
+        # surfaceMountedCube
+        end_time = 100
+    # get number of subdomains
+    n_domains = int(fetch_line_from_file(join(BASE_PATH, "openfoam", "test_cases", simulation, "system",
+                                              "decomposeParDict"), "numberOfSubdomains").split(" ")[-1].strip(";\n"))
 
     # ensure reproducibility
     manual_seed(args.manualSeed)
@@ -121,7 +145,7 @@ def main(args):
     if not exists(join(training_path, "base")):
         copytree(join(BASE_PATH, "openfoam", "test_cases", simulation),
                  join(training_path, "base"), dirs_exist_ok=True)
-    env = SIMULATION_ENVIRONMENTS[simulation]()
+    env = SIMULATION_ENVIRONMENTS[simulation](mpi_ranks=n_domains, test_env=simulation)
     env.path = join(training_path, "base")
 
     # if debug active -> add execution of bashrc to Allrun scripts, because otherwise the path to openFOAM is not set
@@ -138,11 +162,13 @@ def main(args):
         # Typical Slurm configs for TU Braunschweig cluster
         if simulation == "weirOverflow":
             t_max = "02:30:00"
-            env.mpi_ranks = 4
-        else:
+        elif simulation == "cylinder2D":
             t_max = "01:00:00"
+        else:
+            # standard config for surfaceMountedCube
+            t_max = "72:00:00"
         config = SlurmConfig(
-            n_tasks=env.mpi_ranks, n_nodes=1, partition="standard", time=t_max,
+            n_tasks=n_domains, n_nodes=1, partition="standard", time=t_max,
             modules=["singularity/latest", "mpi/openmpi/4.1.1/gcc"], job_name="drl_train"
         )
         """
@@ -254,8 +280,8 @@ if __name__ == "__main__":
         d_args = RunTrainingInDebugger(episodes=10, runners=2, buffer=2, seed=0, out_dir="examples/TEST", finish=0.8)
 
         # test training on local machine for weirOverflow
-        # d_args = RunTrainingInDebugger(episodes=100, runners=1, buffer=20, seed=0,
-        #                                out_dir="examples/e100_r1_b20_f80_new_features_local", finish=81)
+        # d_args = RunTrainingInDebugger(episodes=10, runners=1, buffer=2, seed=0, out_dir="examples/TEST", finish=81,
+        #                                simulation="weirOverflow")
 
         # run PPO training
         main(d_args)
