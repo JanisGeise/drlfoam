@@ -32,4 +32,5 @@ runApplication decomposePar
 # run checkMesh
 runApplication checkMesh
 
+runParallel -s "pre" interFoam
 #------------------------------------------------------------------------------

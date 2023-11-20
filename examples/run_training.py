@@ -122,7 +122,7 @@ def main(args):
         end_time = 0.8
     else:
         # mixerVesselAMI
-        end_time = 10.25
+        end_time = 10.24
 
     # get number of subdomains
     n_domains = int(fetch_line_from_file(join(BASE_PATH, "openfoam", "test_cases", simulation, "system",
