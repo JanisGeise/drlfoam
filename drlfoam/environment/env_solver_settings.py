@@ -283,4 +283,4 @@ class GAMGSolverSettings(Environment):
         var_dt = var_dt.split(" ")[-1].split(";")[0] if var_dt is not None else var_dt
 
         # set the flag for const. dt accordingly
-        self._const_dt = False if var_dt is not None and var_dt == "on" else True
+        self._const_dt = False if var_dt is not None and var_dt == "on" or var_dt == "yes" else True
