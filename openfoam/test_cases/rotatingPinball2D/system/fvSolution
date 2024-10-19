@@ -20,7 +20,7 @@ solvers
     p
     {
         solver           GAMG;
-        smoother         DICGaussSeidel;
+        smoother         GaussSeidel;
         tolerance        1e-6;
         relTol           0.01;
     }
