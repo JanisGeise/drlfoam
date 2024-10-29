@@ -8,7 +8,7 @@ from time import time
 from os.path import join, exists
 from shutil import copytree
 from torch import nn, manual_seed, cuda
-from os import makedirs, environ, getcwd
+from os import makedirs, environ
 
 BASE_PATH = environ.get("DRL_BASE", "")
 sys.path.insert(0, BASE_PATH)
