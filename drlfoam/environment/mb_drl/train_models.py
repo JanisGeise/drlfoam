@@ -144,6 +144,7 @@ class TrainModelEnsemble:
             training_loss.append(pt.mean(pt.tensor(t_loss_tmp)).to("cpu").detach())
 
             # validation loop
+            model.eval()
             with pt.no_grad():
                 for feature, label in dataloader_val:
                     prediction = model(feature).squeeze()
@@ -157,7 +158,7 @@ class TrainModelEnsemble:
                 pt.save(model.state_dict(), join(self._save_dir, self._save_name + f"{no}_val.pt"))
                 best_val_loss = validation_loss[-1]
 
-            # print some info after every 100 epochs
+            # print some info every 100 epochs
             if epoch % 100 == 0:
                 logger.info(f"epoch {epoch}, avg. train loss = " +
                             "{:8f}".format(pt.mean(pt.tensor(training_loss[-self._check_every:])).item()) +

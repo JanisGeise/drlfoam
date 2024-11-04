@@ -42,6 +42,8 @@ class PredictTrajectories:
         """
         predict a trajectory based on given starting point
 
+        TODO: this needs to be generalized once other model types are implemented
+
         :param env_model: model ensemble containing the environment models
         :param initial_states: initial states used as starting point
         :param min_max_values: min. and max. values used for normalization within the dataloader class
@@ -68,7 +70,7 @@ class PredictTrajectories:
         _predictions = pt.zeros((self._batch_size, self._len_trajectory,
                                  env_model[0].n_outputs + n_actions)).to(self._dev)
 
-        # fill in the initial states TODO: this needs to be generalized once other model types are implemented
+        # fill in the initial states
         _alpha = pt.zeros((self._batch_size, self._len_trajectory, n_actions))
         _beta = pt.zeros((self._batch_size, self._len_trajectory, n_actions))
         for i in range(self._batch_size):
@@ -79,29 +81,33 @@ class PredictTrajectories:
             _beta[i, :self._n_t_input, :] = initial_states["beta"].to(self._dev)
 
         # loop over the trajectory, each iteration shift the input window by one time step
-        for t in range(self._len_trajectory - self._n_t_input):
-            if model_no is None:
-                # randomly choose an environment model to make a prediction if no model is specified
-                tmp_env_model = env_model[pt.randint(low=0, high=len(env_model), size=(1, 1)).item()]
-            else:
-                tmp_env_model = env_model[model_no]
+        with pt.no_grad():
+            for t in range(self._len_trajectory - self._n_t_input):
+                if model_no is None:
+                    # randomly choose an environment model to make a prediction if no model is specified
+                    tmp_env_model = env_model[pt.randint(low=0, high=len(env_model), size=(1, 1)).item()].eval()
+                else:
+                    tmp_env_model = env_model[model_no].eval()
 
-            # make prediction and add to predictions
-            _pred_states = tmp_env_model(_predictions[:, t:t + self._n_t_input, :].flatten(1)).squeeze().detach()
-            _predictions[:, t + self._n_t_input, :-n_actions] = _pred_states
+                # make prediction and add to predictions
+                _pred_states = tmp_env_model(_predictions[:, t:t + self._n_t_input, :].flatten(1)).squeeze()
+                _predictions[:, t + self._n_t_input, :-n_actions] = _pred_states
 
-            # use predicted (new) state to get an action for both environment models as new input
-            # note: policy network uses real states as input (not scaled to [0, 1]), policy training currently on cpu
-            _states_unscaled = self._rescale(_predictions[:, t + self._n_t_input, :n_states], min_max_values["states"])
-            _pred_action = policy_model(_states_unscaled.to("cpu")).squeeze().detach()
+                # use predicted (new) state to get an action for both environment models as new input
+                # note: policy network uses real states as input (not scaled to [0, 1]),
+                # policy training currently on cpu
+                _states_unscaled = self._rescale(_predictions[:, t + self._n_t_input, :n_states],
+                                                 min_max_values["states"])
+                _pred_action = policy_model(_states_unscaled.to("cpu")).squeeze().detach()
 
-            # sample the value for omega (are already in [0, 1], so we don't need to rescale them)
-            _alpha[:, t + self._n_t_input, :] = _pred_action[:, :n_actions]
-            _beta[:, t + self._n_t_input, :] = _pred_action[:, n_actions:]
-            beta_distr = pt.distributions.beta.Beta(_alpha[:, t + self._n_t_input, :], _beta[:, t + self._n_t_input, :])
+                # sample the value for omega (are already in [0, 1], so we don't need to rescale them)
+                _alpha[:, t + self._n_t_input, :] = _pred_action[:, :n_actions]
+                _beta[:, t + self._n_t_input, :] = _pred_action[:, n_actions:]
+                beta_distr = pt.distributions.beta.Beta(_alpha[:, t + self._n_t_input, :],
+                                                        _beta[:, t + self._n_t_input, :])
 
-            # add the actions
-            _predictions[:, t + self._n_t_input, -n_actions:] = beta_distr.sample()
+                # add the actions
+                _predictions[:, t + self._n_t_input, -n_actions:] = beta_distr.sample()
 
         # reshape to actions, states, etc. We only need the first trajectory since they are identical
         # further, n_actions = n_cy = n_cx
