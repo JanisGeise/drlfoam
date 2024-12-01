@@ -24,7 +24,7 @@ pt.set_default_tensor_type(DEFAULT_TENSOR_TYPE)
 
 class TrainModelEnsemble:
     def __init__(self, train_path: str, env: str, max_epochs: int = 2500, lr: float = 0.01,
-                 stop_abs_value: float = 1e-6, stop_gradient: float = -1e-7, check_every: int = 100):
+                 stop_abs_value: float = 1e-6, patience: float = 25, check_every: int = 1):
         """
         implements a class for executing the model training
 
@@ -33,8 +33,8 @@ class TrainModelEnsemble:
         :param max_epochs: max. number of epochs to run the model training
         :param lr: initial learning rate
         :param stop_abs_value: stop training when validation loss reaches this value
-        :param stop_gradient: stop training when the avg. gradient of the validation loss over the last 'check_every'
-                              epochs reaches this value
+        :param patience: wait N epochs for the validation loss to improve, if not stop the training;
+                         gets reset each time a new best validation loss is reached
         :param check_every: check the stopping criteria every N epochs
         """
         self._check_every = check_every
@@ -45,7 +45,8 @@ class TrainModelEnsemble:
         self._min_lr = 1.0e-4
         self._weight_decay = 1e-3
         self._stop_abs = stop_abs_value
-        self._stop_grad = stop_gradient
+        self._patience = patience
+        self._patience_counter = 0
 
         self._dev = "cuda" if pt.cuda.is_available() else "cpu"
         self._save_dir = join(self._train_path, "env_model")
@@ -128,6 +129,7 @@ class TrainModelEnsemble:
         # lists for storing losses
         best_val_loss, best_train_loss = 1.0e5, 1.0e5
         training_loss, validation_loss = [], []
+        self._patience_counter = 0
 
         for epoch in range(1, self._max_epochs + 1):
             t_loss_tmp, v_loss_tmp = [], []
@@ -157,6 +159,9 @@ class TrainModelEnsemble:
             if validation_loss[-1] < best_val_loss:
                 pt.save(model.state_dict(), join(self._save_dir, self._save_name + f"{no}_val.pt"))
                 best_val_loss = validation_loss[-1]
+                self._patience_counter = 0
+            else:
+                self._patience_counter += 1
 
             # print some info every 100 epochs
             if epoch % 100 == 0:
@@ -166,15 +171,9 @@ class TrainModelEnsemble:
                             "{:8f}".format(pt.mean(pt.tensor(validation_loss[-self._check_every:])).item()))
 
             # check every N epochs if model performs well on validation data or validation loss converges
-            if epoch % self._check_every == 0 and epoch > self._check_every+1:
-                # (current_gradient - last_gradient) / delta_epochs
-                _delta = (pt.mean(pt.tensor(validation_loss[-5:])) -
-                          pt.mean(pt.tensor(validation_loss[-(self._check_every+2):-(self._check_every-3)])))
-                avg_grad_val_loss = _delta / self._check_every
-
-                # since the loss decreases, the gradient is negative, so if it converges or starts increasing,
-                # then stop training
-                if validation_loss[-1] <= self._stop_abs or avg_grad_val_loss >= self._stop_grad:
+            if epoch % self._check_every == 0:
+                if validation_loss[-1] <= self._stop_abs or self._patience_counter >= self._patience:
+                    logger.info(f"Stopping training after {epoch} epochs due to early stopping criteria.")
                     break
 
         if self._env == "local":
